@@ -85,7 +85,7 @@ Para que los agentes no improvisen:
 | LLM | Interfaz `LLMProvider`; primera implementación: Anthropic, modelo por defecto Claude Haiku 4.5 (configurable) |
 | Tests | `pytest`, sin red en tests unitarios (fixtures grabadas) |
 | Lint / tipos | `ruff` + `mypy` |
-| Licencia | MIT (a confirmar) |
+| Licencia | MIT |
 
 ## Archivos en la máquina del usuario
 

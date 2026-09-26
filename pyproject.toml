@@ -3,6 +3,8 @@ name = "argospipe"
 version = "0.1.0"
 description = "Local CLI that finds job offers, filters them, and matches them against your CV with an LLM."
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = [
     "typer>=0.12",
