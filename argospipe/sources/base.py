@@ -1,14 +1,16 @@
 from typing import Protocol
 
-from pydantic import computed_field
-
-from argospipe.config import NotionFields
+from pydantic import BaseModel, computed_field
 
 
-class RawJob(NotionFields):
-    location: str | None = None  # type: ignore[assignment]
-    description: str | None = None  # type: ignore[assignment]
+class RawJob(BaseModel):
+    title: str
+    company: str
+    url: str
+    location: str | None = None
+    description: str | None = None
     posted_at: str | None = None
+    source_name: str | None = None
     source: str
     external_id: str
 
