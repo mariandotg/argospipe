@@ -63,3 +63,13 @@ def test_normalize_stack_keeps_symbols() -> None:
         ".net",
         "node.js",
     }
+
+
+def test_seniority_closeness_breaks_otherwise_equal_jobs() -> None:
+    profile = CandidateProfile(stack=["Java"], roles=["Backend Engineer"], seniority="senior")
+    far = job("far", stack=["Java"], title="Backend Engineer", seniority="junior")
+    close = job("close", stack=["Java"], title="Backend Engineer", seniority="senior")
+
+    top, _ = rank([far, close], profile, limit=1)
+
+    assert [j.fingerprint for j in top] == ["close"]
