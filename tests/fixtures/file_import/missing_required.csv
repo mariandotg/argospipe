@@ -1,0 +1,3 @@
+title,company,url
+Valid role,Acme,https://jobs.example/valid
+Missing company,,https://jobs.example/missing-company
