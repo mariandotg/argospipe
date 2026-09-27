@@ -57,3 +57,16 @@ def test_title_keeps_unknown_parenthesized_detail() -> None:
 def test_location_normalizes_text_and_preserves_none() -> None:
     assert normalize_location("  Búenos Aires,   Argentina  ") == "buenos aires argentina"
     assert normalize_location(None) is None
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "Engineer - Remote - Argentina",
+        "Engineer | Remote - Argentina",
+        "Engineer (Remote) - Argentina",
+        "Engineer - Remote",
+    ],
+)
+def test_chained_location_suffixes_are_all_removed(title: str) -> None:
+    assert normalize_title(title) == "engineer"

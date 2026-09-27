@@ -44,7 +44,7 @@ def _is_title_suffix(value: str) -> bool:
 def normalize_title(title: str) -> str:
     while True:
         parenthesized = re.search(r"\s*\(([^()]*)\)\s*$", title)
-        separated = re.search(r"(?:\s+-\s+|\s*\|\s*)([^|]+)$", title)
+        separated = re.search(r"(?:\s+-\s+|\s*\|\s*)((?:(?!\s+-\s+)[^|])+)$", title)
         suffix = parenthesized or separated
         if suffix is None or not _is_title_suffix(suffix.group(1)):
             break
