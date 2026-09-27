@@ -155,3 +155,16 @@ def test_cli_missing_key_exits_without_provider_call(
     assert "ANTHROPIC_API_KEY" in result.output
     assert provider.calls == []
     assert not (tmp_path / "data" / "profile.yaml").exists()
+
+
+def test_cli_corrupt_pdf_exits_cleanly(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ARGOSPIPE_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    cv = tmp_path / "cv.pdf"
+    cv.write_bytes(b"%PDF-1.7 not really a pdf")
+
+    result = runner.invoke(cli.app, ["profile", "import", str(cv)])
+
+    assert result.exit_code == 1
+    assert "Profile import failed" in result.output
+    assert not (tmp_path / "home" / "profile.yaml").exists()

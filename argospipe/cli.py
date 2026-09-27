@@ -3,12 +3,14 @@ import os
 from pathlib import Path
 from typing import Annotated
 
+import anthropic
 import typer
+from pypdf.errors import PdfReadError
 from rich.console import Console
 from rich.table import Table
 
 from argospipe.config import Config, config_path, load_config, profile_path
-from argospipe.llm.anthropic import AnthropicProvider
+from argospipe.llm.anthropic import AnthropicProvider, LLMOutputError
 from argospipe.llm.provider import Usage, cost_usd
 from argospipe.profile_import import import_profile
 
@@ -45,7 +47,7 @@ def profile_import(
         profile = asyncio.run(
             import_profile(cv, AnthropicProvider(selected_model), out_path, force, record_usage)
         )
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, PdfReadError, anthropic.APIError, LLMOutputError) as exc:
         typer.echo(f"Profile import failed: {exc}", err=True)
         raise typer.Exit(1) from exc
 
@@ -57,7 +59,7 @@ def profile_import(
     for field, value in profile.profile.model_dump().items():
         summary.add_row(
             field.replace("_", " ").title(),
-            ", ".join(value) if isinstance(value, list) else str(value or "—"),
+            ", ".join(value) if isinstance(value, list) else ("—" if value is None else str(value)),
         )
     console.print(summary)
     if usage is not None:
