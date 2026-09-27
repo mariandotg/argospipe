@@ -95,3 +95,32 @@ def test_multiple_reasons_are_collected_in_one_discard() -> None:
 def test_empty_preferences_keep_everything_in_input_order() -> None:
     jobs = [job(fingerprint="one", stack=["Python"]), job(fingerprint="two")]
     assert prefilter(jobs, Preferences()) == (jobs, [])
+
+
+def test_stack_with_nothing_in_common_is_discarded() -> None:
+    kept, discards = prefilter(
+        [job(stack=["Go", "Rust"])], Preferences(), profile_stack=["Java", "Spring"]
+    )
+
+    assert kept == []
+    assert "shares nothing" in discards[0].reasons[0]
+
+
+@pytest.mark.parametrize(
+    ("job_stack", "profile_stack"),
+    [([], ["Java"]), (["Go"], []), (["Go"], None), (["java"], ["Java"])],
+)
+def test_stack_rule_passes_when_unknown_or_overlapping(
+    job_stack: list[str], profile_stack: list[str] | None
+) -> None:
+    kept, discards = prefilter([job(stack=job_stack)], Preferences(), profile_stack=profile_stack)
+
+    assert len(kept) == 1
+    assert discards == []
+
+
+def test_c_family_languages_do_not_match_each_other() -> None:
+    kept, discards = prefilter([job(stack=["C++"])], Preferences(), profile_stack=["C#"])
+
+    assert kept == []
+    assert len(discards) == 1

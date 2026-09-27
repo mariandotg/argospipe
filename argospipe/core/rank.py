@@ -1,17 +1,13 @@
 from argospipe.config import CandidateProfile
 from argospipe.core.models import Discard, JobRecord
-from argospipe.core.normalize import normalize_location, normalize_title
+from argospipe.core.normalize import normalize_stack, normalize_title
 
 SENIORITY_ORDER = ("intern", "junior", "semi-senior", "senior", "lead", "principal")
 
 
-def _normalized_stack(values: list[str]) -> set[str]:
-    return {normalized for value in values if (normalized := normalize_location(value))}
-
-
 def _score(job: JobRecord, profile: CandidateProfile) -> float:
-    job_stack = _normalized_stack(job.stack)
-    profile_stack = _normalized_stack(profile.stack)
+    job_stack = normalize_stack(job.stack)
+    profile_stack = normalize_stack(profile.stack)
     stack_overlap = (
         len(job_stack & profile_stack) / len(job_stack | profile_stack)
         if job_stack and profile_stack
