@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 
+from argospipe import __version__
 from argospipe.sources.http import SourceHTTPClient, SourceNotFoundError
 
 
@@ -26,7 +27,7 @@ def test_request_identifies_client_and_retries_429(monkeypatch: pytest.MonkeyPat
     asyncio.run(run())
     assert len(requests) == 2
     assert requests[0].headers["User-Agent"] == (
-        "argospipe/0.1.0 (+https://github.com/mariandotg/argospipe)"
+        f"argospipe/{__version__} (+https://github.com/mariandotg/argospipe)"
     )
     sleep.assert_awaited_once_with(2.0)
 

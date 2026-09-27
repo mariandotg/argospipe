@@ -74,3 +74,16 @@ def test_description_keeps_paragraph_breaks() -> None:
     assert _description("&lt;p&gt;First &amp;amp; second&lt;/p&gt;&lt;p&gt;Next&lt;/p&gt;") == (
         "First & second\nNext"
     )
+
+
+def test_explicit_name_wins_even_when_equal_to_slug() -> None:
+    fixture = (FIXTURES / "gitlab.json").read_bytes()
+
+    async def run() -> None:
+        transport = httpx.MockTransport(lambda _: httpx.Response(200, content=fixture))
+        async with SourceHTTPClient(transport=transport) as client:
+            jobs = await GreenhouseSource("gitlab", name="gitlab", client=client).fetch()
+
+        assert {job.company for job in jobs} == {"gitlab"}
+
+    asyncio.run(run())
