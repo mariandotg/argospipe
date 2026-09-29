@@ -24,4 +24,6 @@ class LLMProvider(Protocol):
 
 
 def cost_usd(usage: Usage, price: ModelPrice) -> float:
-    raise NotImplementedError
+    return (
+        usage.tokens_in * price.input_per_mtok + usage.tokens_out * price.output_per_mtok
+    ) / 1_000_000
