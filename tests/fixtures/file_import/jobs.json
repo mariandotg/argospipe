@@ -1,0 +1,13 @@
+[
+  {
+    "title": "Data Engineer",
+    "company": "Example Inc",
+    "url": "https://jobs.example/data",
+    "location": "Buenos Aires",
+    "description": "Build data pipelines",
+    "posted_at": "2026-09-29",
+    "source_name": "Company site",
+    "source": "scraper",
+    "external_id": "data-1"
+  }
+]
