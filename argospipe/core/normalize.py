@@ -58,3 +58,15 @@ def normalize_title(title: str) -> str:
 
 def normalize_location(location: str | None) -> str | None:
     return None if location is None else _normalize_text(location)
+
+
+def normalize_stack(values: list[str]) -> set[str]:
+    """Technology names keep `+`, `#` and `.` so C, C++, C# and .NET stay distinct."""
+    normalized = set()
+    for value in values:
+        token = unicodedata.normalize("NFKD", value.casefold())
+        token = "".join(char for char in token if not unicodedata.combining(char))
+        token = " ".join(re.sub(r"[^\w\s+#.]|_", " ", token).split())
+        if token:
+            normalized.add(token)
+    return normalized
