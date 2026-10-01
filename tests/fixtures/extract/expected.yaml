@@ -46,7 +46,7 @@ greenhouse/datadog:2:
 greenhouse/gitlab:0:
   seniority: null # Mentoring junior engineers does not make this a junior role.
   modality: remote
-  stack: [TypeScript, JavaScript, Python, GraphQL, REST, GitLab] # GitLab: "Experience with GitLab platform" is a preferred skill.
+  stack: [TypeScript, JavaScript, Python, GraphQL, REST] # The employer name is never its own technology.
   lang: en
 greenhouse/gitlab:1:
   seniority: null # "Mid-Senior Experience" does not identify one level.
