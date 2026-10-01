@@ -1,6 +1,6 @@
 import asyncio
 import os
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -61,7 +61,7 @@ class NotionSource:
         if self._since is not None:
             body["filter"] = {
                 "timestamp": "last_edited_time",
-                "last_edited_time": {"on_or_after": self._since.isoformat()},
+                "last_edited_time": {"on_or_after": _as_utc(self._since).isoformat()},
             }
 
         jobs: list[RawJob] = []
@@ -117,8 +117,8 @@ class NotionSource:
         date = properties.get(fields.posted_at, {}) if fields.posted_at else {}
         posted_at = date.get("date", {}) if isinstance(date, dict) else {}
         return RawJob(
-            title=title,
-            company=company,
+            title=title.strip(),
+            company=company.strip(),
             url=url,
             description=description or None,
             location=location or None,
@@ -127,3 +127,7 @@ class NotionSource:
             source_name=None,
             external_id=page["id"],
         )
+
+
+def _as_utc(value: datetime) -> datetime:
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
