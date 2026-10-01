@@ -48,11 +48,20 @@ def _group_discards_by_reason(
     return groups
 
 
+def _safe_url(url: str | None) -> str | None:
+    """Offer URLs are untrusted: only http(s) links are rendered."""
+    if url and url.strip().lower().startswith(("http://", "https://")):
+        return url.strip()
+    return None
+
+
 def _environment() -> Environment:
-    return Environment(
+    environment = Environment(
         loader=PackageLoader("argospipe.report", ""),
         autoescape=select_autoescape(enabled_extensions=("html", "j2")),
     )
+    environment.filters["safe_url"] = _safe_url
+    return environment
 
 
 def render(result: RunResult, path: Path, *, threshold: int = 70) -> Path:

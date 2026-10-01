@@ -129,7 +129,7 @@
           <header>
             <h3>
               {% if match.job.url %}
-                <a href="{{ match.job.url }}">{{ match.job.title }}</a>
+                {% set link = match.job.url | safe_url %}{% if link %}<a href="{{ link }}">{{ match.job.title }}</a>{% else %}{{ match.job.title }}{% endif %}
               {% else %}
                 {{ match.job.title }}
               {% endif %}
@@ -172,7 +172,7 @@
           <header>
             <h3>
               {% if match.job.url %}
-                <a href="{{ match.job.url }}">{{ match.job.title }}</a>
+                {% set link = match.job.url | safe_url %}{% if link %}<a href="{{ link }}">{{ match.job.title }}</a>{% else %}{{ match.job.title }}{% endif %}
               {% else %}
                 {{ match.job.title }}
               {% endif %}
