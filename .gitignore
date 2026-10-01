@@ -12,3 +12,4 @@ build/
 profile.yaml
 reports/
 .DS_Store
+.claude/worktrees/
