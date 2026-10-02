@@ -199,3 +199,17 @@ def test_schedule_linux_remove_reports_nothing_installed(
 
     assert result.exit_code == 0
     assert "No schedule installed" in result.output
+
+
+def test_install_linux_never_wipes_crontab_when_read_fails(tmp_path: Path) -> None:
+    calls: list[list[str]] = []
+
+    def broken(args: list[str], stdin: str | None = None) -> subprocess.CompletedProcess[str]:
+        calls.append(args)
+        if args == ["crontab", "-l"]:
+            return subprocess.CompletedProcess(args, 1, "", "crontab: permission denied")
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    with pytest.raises(RuntimeError, match="crontab read failed"):
+        sched.install_linux(EXE, 9, 0, tmp_path, run=broken)
+    assert ["crontab", "-"] not in calls

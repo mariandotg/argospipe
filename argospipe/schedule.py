@@ -111,7 +111,12 @@ def remove_macos(
 
 def _read_crontab(run: Runner) -> list[str]:
     result = run(["crontab", "-l"], None)
-    return result.stdout.splitlines() if result.returncode == 0 else []
+    if result.returncode == 0:
+        return result.stdout.splitlines()
+    if "no crontab" in result.stderr.lower():
+        return []
+    # Any other failure must stop: writing back an empty list would wipe the user's crontab.
+    raise RuntimeError(f"crontab read failed: {result.stderr.strip()}")
 
 
 def _write_crontab(lines: list[str], run: Runner) -> None:
