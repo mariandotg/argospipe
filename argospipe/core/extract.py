@@ -10,7 +10,7 @@ import yaml
 
 from argospipe.config import Modality, Seniority
 from argospipe.core.models import JobRecord
-from argospipe.core.normalize import normalize_title
+from argospipe.core.normalize import normalize_stack, normalize_title
 
 _SENIORITY: tuple[tuple[Seniority, str], ...] = (
     ("intern", r"\b(?:intern(?:ship)?|trainee|pasante|pasantia)\b"),
@@ -145,20 +145,26 @@ class _Dictionary(NamedTuple):
     case_sensitive: frozenset[str]
     context_required: frozenset[str]
     alias_only: frozenset[str]
+    generic: frozenset[str]
 
 
 @lru_cache(maxsize=1)
 def _dictionary() -> _Dictionary:
-    path = resources.files("argospipe.core").joinpath("data/stack_v1.yaml")
+    path = resources.files("argospipe.core").joinpath("data/stack_v2.yaml")
     data: dict[str, Any] = yaml.safe_load(path.read_text(encoding="utf-8"))
-    if data["version"] != 1:
+    if data["version"] != 2:
         raise ValueError("Unsupported stack dictionary version")
     return _Dictionary(
         data["technologies"],
         frozenset(data["case_sensitive"]),
         frozenset(data["context_required"]),
         frozenset(data["alias_only"]),
+        frozenset(data["generic"]),
     )
+
+
+def generic_technologies() -> frozenset[str]:
+    return frozenset(normalize_stack(list(_dictionary().generic)))
 
 
 def _technology_context(text: str, start: int, end: int) -> bool:
