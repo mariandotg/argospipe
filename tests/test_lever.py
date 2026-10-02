@@ -7,8 +7,9 @@ from pathlib import Path
 import httpx
 import pytest
 
+from argospipe.config import Modality
 from argospipe.sources.http import SourceHTTPClient, SourceNotFoundError
-from argospipe.sources.lever import LeverSource
+from argospipe.sources.lever import LeverSource, modality_from_workplace_type
 
 FIXTURES = Path(__file__).parent / "fixtures" / "ats" / "lever"
 
@@ -135,5 +136,60 @@ def test_description_order_and_location_fallback_are_literal() -> None:
         assert sections[2].splitlines()[0] == "Nice to have"
         assert "Kotlin" in sections[2]
         assert sections[-1] == "We offer remote work."
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    ("workplace_type", "expected"),
+    [
+        ("remote", "remote"),
+        ("hybrid", "hybrid"),
+        ("onsite", "onsite"),
+        ("REMOTE", None),
+        ("on-site", None),
+        ("", None),
+        (None, None),
+    ],
+)
+def test_workplace_type_maps_modality(workplace_type: object, expected: Modality | None) -> None:
+    assert modality_from_workplace_type(workplace_type) == expected
+
+
+def test_workplace_type_on_fetched_jobs() -> None:
+    board = [
+        {
+            "id": "1",
+            "text": "Remote role",
+            "hostedUrl": "https://jobs.lever.co/acme/1",
+            "createdAt": 1759276800000,
+            "categories": {},
+            "workplaceType": "remote",
+        },
+        {
+            "id": "2",
+            "text": "Hybrid role",
+            "hostedUrl": "https://jobs.lever.co/acme/2",
+            "createdAt": 1759276800000,
+            "categories": {},
+            "workplaceType": "hybrid",
+        },
+        {
+            "id": "3",
+            "text": "Unknown",
+            "hostedUrl": "https://jobs.lever.co/acme/3",
+            "createdAt": 1759276800000,
+            "categories": {},
+            "workplaceType": "flexible",
+        },
+    ]
+    body = json.dumps(board).encode()
+
+    async def run() -> None:
+        transport = httpx.MockTransport(lambda _: httpx.Response(200, content=body))
+        async with SourceHTTPClient(transport=transport) as client:
+            jobs = await LeverSource("acme", client=client).fetch()
+
+        assert [job.modality for job in jobs] == ["remote", "hybrid", None]
 
     asyncio.run(run())
