@@ -162,11 +162,28 @@ def test_cli_missing_key_exits_without_calls(
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     pairs = tmp_path / "pairs.yaml"
     write_pairs(pairs)
-    provider = FakeProvider({"a": 80, "b": 50})
-    monkeypatch.setattr(cli, "AnthropicProvider", lambda _m: provider)
+    created: list[str] = []
+
+    def factory(model: str) -> FakeProvider:
+        created.append(model)
+        return FakeProvider({"a": 80, "b": 50})
+
+    monkeypatch.setattr(cli, "AnthropicProvider", factory)
     result = runner.invoke(app, ["eval", "--pairs", str(pairs), "--model", "x"])
     assert result.exit_code == 1
-    assert provider.calls == 0
+    assert created == []
+
+
+def test_cli_malformed_pairs_yaml_fails_cleanly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ARGOSPIPE_HOME", str(tmp_path))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    pairs = tmp_path / "pairs.yaml"
+    pairs.write_text("pairs: [unclosed", encoding="utf-8")
+    result = runner.invoke(app, ["eval", "--pairs", str(pairs), "--model", "x"])
+    assert result.exit_code == 1
+    assert "Eval failed" in result.output
 
 
 def test_cli_missing_pairs_points_to_example(
