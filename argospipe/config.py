@@ -71,6 +71,7 @@ class NotionSourceConfig(BaseModel):
     type: Literal["notion"] = "notion"
     database_id: str
     fields: NotionFields
+    skip_statuses: list[str] = ["Closed"]
 
 
 class FileSourceConfig(BaseModel):
