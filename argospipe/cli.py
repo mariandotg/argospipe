@@ -6,6 +6,7 @@ from typing import Annotated
 
 import anthropic
 import typer
+import yaml
 from pypdf.errors import PdfReadError
 from rich.console import Console
 from rich.markup import escape
@@ -27,6 +28,7 @@ from argospipe.config import (
 )
 from argospipe.core.models import RunResult
 from argospipe.credentials import get_api_key
+from argospipe.eval import EvalResult, load_pairs, run_eval
 from argospipe.init_wizard import init_command
 from argospipe.llm.anthropic import AnthropicProvider, LLMOutputError
 from argospipe.llm.provider import Usage, cost_usd
@@ -249,6 +251,77 @@ def sources_list() -> None:
         elif isinstance(source, NotionSourceConfig):
             table.add_row("notion", source.database_id, "—")
 
+    Console().print(table)
+
+
+@app.command("eval")
+def eval_command(
+    model: Annotated[
+        list[str], typer.Option("--model", help="Anthropic model to evaluate. Repeatable.")
+    ],
+    pairs: Annotated[Path, typer.Option("--pairs", help="Pairs file.")] = Path("eval/pairs.yaml"),
+    json_output: Annotated[bool, typer.Option("--json", help="Print the result as JSON.")] = False,
+    threshold: Annotated[
+        int | None, typer.Option("--threshold", help="Score threshold for agreement.")
+    ] = None,
+) -> None:
+    """Compare models against your own scores: agreement and cost."""
+    if not pairs.exists():
+        typer.echo(
+            f"Pairs file not found: {pairs}. Copy eval/pairs.example.yaml to {pairs} and edit it.",
+            err=True,
+        )
+        raise typer.Exit(1)
+    if not get_api_key():
+        typer.echo("Set ANTHROPIC_API_KEY or run `argospipe init` to run the eval.", err=True)
+        raise typer.Exit(1)
+
+    try:
+        loaded = load_pairs(pairs)
+        config = load_config() if config_path().exists() else Config()
+        default_profile = load_profile() if profile_path().exists() else None
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        typer.echo(f"Eval failed: {exc}", err=True)
+        raise typer.Exit(1) from exc
+
+    if threshold is None:
+        threshold = default_profile.preferences.threshold if default_profile else 70
+    result = asyncio.run(
+        run_eval(
+            loaded,
+            model,
+            AnthropicProvider,
+            config,
+            default_profile,
+            threshold,
+            config.match_concurrency,
+        )
+    )
+    if json_output:
+        typer.echo(result.model_dump_json(indent=2))
+    else:
+        _print_eval(result)
+
+
+def _print_eval(result: EvalResult) -> None:
+    table = Table(
+        "Model",
+        "MAE",
+        f"Agreement (>= {result.threshold})",
+        "Failures",
+        "Tokens in/out",
+        "Cost",
+        title=f"Eval: {result.pairs} pairs",
+    )
+    for m in result.models:
+        table.add_row(
+            m.model,
+            "n/a" if m.mae is None else f"{m.mae:.1f}",
+            "n/a" if m.agreement_pct is None else f"{m.agreement_pct:.0f}%",
+            str(m.failures),
+            f"{m.tokens_in}/{m.tokens_out}",
+            "n/a" if m.cost_usd is None else f"${m.cost_usd:.4f}",
+        )
     Console().print(table)
 
 

@@ -2,12 +2,15 @@ from typing import Protocol
 
 from pydantic import BaseModel, computed_field
 
+from argospipe.config import Modality
+
 
 class RawJob(BaseModel):
     title: str
     company: str
     url: str
     location: str | None = None
+    modality: Modality | None = None
     description: str | None = None
     posted_at: str | None = None
     source_name: str | None = None
