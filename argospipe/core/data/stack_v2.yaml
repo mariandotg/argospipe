@@ -1,4 +1,4 @@
-version: 1
+version: 2
 technologies:
   Java: []
   Spring: [Spring Boot, Spring Framework, Spring MVC, Spring Cloud]
@@ -76,3 +76,7 @@ context_required: [C, Go, React, Swift, Spark, Dart, Ruby]
 
 # Bare name never matches. Only the aliases match ("Spring Boot", "Express.js").
 alias_only: [Spring, Express]
+
+# Universal tools, not stack choices. The prefilter ignores them on both sides.
+generic:
+  [Git, GitHub, GitLab, Linux, SQL, REST, Docker, Bash, Jira, Agile, Scrum, CI/CD, Figma]

@@ -85,7 +85,7 @@ Para que los agentes no improvisen:
 | LLM | Interfaz `LLMProvider`; primera implementación: Anthropic, modelo por defecto Claude Haiku 4.5 (configurable) |
 | Tests | `pytest`, sin red en tests unitarios (fixtures grabadas) |
 | Lint / tipos | `ruff` + `mypy` |
-| Licencia | MIT (a confirmar) |
+| Licencia | MIT |
 
 ## Archivos en la máquina del usuario
 
@@ -143,23 +143,9 @@ eval/
 
 ### v0.1: fuentes de importación
 
-**Notion.** Lee la base donde tu bot guarda las ofertas, con la API oficial de Notion (token de integración en variable de entorno). Un mapeo en `config.yaml` indica qué propiedad de Notion corresponde a cada campo de `RawJob`:
+**Notion.** Lee la base donde tu bot guarda las ofertas, con la API oficial de Notion (token de integración en variable de entorno). Un mapeo en `config.yaml` indica qué propiedad de Notion corresponde a cada campo de `RawJob`. **El esquema completo (qué se lee, qué se escribe, qué no se toca) está en [`notion-schema.md`](notion-schema.md).**
 
-```yaml
-sources:
-  - type: notion
-    database_id: "..."
-    fields:            # propiedad de Notion → campo de RawJob (completar con tu base real)
-      title: "Puesto"
-      company: "Empresa"
-      location: "Ubicación"
-      url: "Link"
-      description: "Descripción"
-      posted_at: "Fecha"
-      source_name: "Fuente"
-```
-
-- **La descripción completa es obligatoria** para el matching. Si una fila no la tiene, la oferta se marca `missing_description` y no se envía al LLM (aparece en el reporte).
+- **La descripción completa es obligatoria** para el matching. Va en una property de texto libre (`Description`) que llena el bot. Si una fila no la tiene, la oferta se marca `missing_description` y no se envía al LLM (aparece en el reporte).
 - Solo se leen filas nuevas o editadas desde la última corrida (`last_edited_time`).
 
 **CSV / JSON.** Para quien tenga su propio scraper: un archivo con las mismas columnas que `RawJob`. Así cualquiera conecta su fuente sin escribir código.

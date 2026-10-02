@@ -254,7 +254,9 @@ def test_run_without_price_for_model_fails_before_matching(conn: sqlite3.Connect
 
 def test_prefilter_uses_profile_stack(conn: sqlite3.Connection) -> None:
     provider = FakeProvider()
-    java = raw("Senior Backend Engineer", "Umbrella", description="We use Java and Spring.")
+    java = raw(
+        "Senior Backend Engineer", "Umbrella", description="We use Java, Kotlin and Spring Boot."
+    )
 
     result = run(conn, provider, [FakeSource([java])])
 
