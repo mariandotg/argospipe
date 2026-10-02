@@ -162,7 +162,11 @@ def _dictionary() -> _Dictionary:
 
 
 def _technology_context(text: str, start: int, end: int) -> bool:
-    nearby = text[max(0, start - 65) : min(len(text), end + 65)]
+    sentence_start = max(text.rfind("\n", 0, start), text.rfind(". ", 0, start)) + 1
+    breaks = [i for i in (text.find("\n", end), text.find(". ", end)) if i != -1]
+    sentence_end = min(breaks) if breaks else len(text)
+    window_start = max(sentence_start, start - 65)
+    nearby = text[window_start : min(sentence_end, end + 65)]
     return bool(
         re.search(
             r"\b(?:languages?|frameworks?|technologies|tech stack|coding|programming|"
@@ -174,11 +178,14 @@ def _technology_context(text: str, start: int, end: int) -> bool:
     )
 
 
-def _stack(title: str, description: str) -> list[str]:
+def _stack(title: str, description: str, company: str = "") -> list[str]:
     text = re.sub(r"https?://\S+", " ", f"{title}\n{description}")
     rules = _dictionary()
+    employer = re.sub(r"\W", "", company.casefold())
     result = []
     for canonical, aliases in rules.technologies.items():
+        if employer and re.sub(r"\W", "", canonical.casefold()) == employer:
+            continue
         flags = 0 if canonical in rules.case_sensitive else re.IGNORECASE
         for alias in (canonical, *aliases):
             bare = alias == canonical
@@ -212,7 +219,7 @@ def extract(job: JobRecord) -> JobRecord:
         update={
             "seniority": job.seniority or _seniority(job.title, description),
             "modality": job.modality or _modality(job.title, job.location, description),
-            "stack": job.stack or _stack(job.title, description),
+            "stack": job.stack or _stack(job.title, description, job.company),
             "lang": job.lang or _language(description),
         }
     )

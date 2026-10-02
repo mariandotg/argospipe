@@ -18,10 +18,15 @@ def _text(value: str) -> str:
     return re.sub(r"<[^>]*>", " ", html.unescape(value))
 
 
-def _job(title: str, location: str | None = None, description: str | None = None) -> JobRecord:
+def _job(
+    title: str,
+    location: str | None = None,
+    description: str | None = None,
+    company: str = "Fixture",
+) -> JobRecord:
     return JobRecord(
         fingerprint="fixture",
-        company="Fixture",
+        company=company,
         title=title,
         location=location,
         description=description,
@@ -35,50 +40,52 @@ def _posting(path: str, index: int) -> JobRecord:
     body = json.loads((ATS / ats / f"{name}.json").read_text(encoding="utf-8"))
     posting = body[index] if isinstance(body, list) else body["jobs"][index]
     if ats == "greenhouse":
-        return _job(posting["title"], posting["location"]["name"], _text(posting["content"]))
+        content = _text(posting["content"])
+        return _job(posting["title"], posting["location"]["name"], content, name)
     if ats == "ashby":
-        return _job(posting["title"], posting["location"], posting["descriptionPlain"])
+        return _job(posting["title"], posting["location"], posting["descriptionPlain"], name)
     parts = [posting["descriptionPlain"]]
     parts.extend(_text(section["content"]) for section in posting["lists"])
     parts.append(posting["additionalPlain"])
-    return _job(posting["text"], posting["categories"]["location"], "\n".join(parts))
+    return _job(posting["text"], posting["categories"]["location"], "\n".join(parts), name)
 
 
-# Keys whose true value the extractor cannot reach from title, location and description.
+# (posting, field) pairs whose true value the extractor cannot reach from title,
+# location and description. Only that field is xfail; the others stay covered.
 KNOWN_GAPS = {
-    "greenhouse/gitlab:1": "stack: the employer name GitLab is matched as a technology",
-    "greenhouse/gitlab:2": "stack: the employer name GitLab is matched as a technology",
-    "ashby/supabase:0": "stack: the employer name Supabase is matched as a technology",
-    "ashby/supabase:1": "stack: the employer name Supabase is matched as a technology",
-    "ashby/supabase:2": "stack: the employer name Supabase is matched as a technology",
-    "lever/dlocal:0": "modality: hybrid only in Lever workplaceType, not in the text",
-    "lever/dlocal:1": "modality: hybrid only in Lever workplaceType, not in the text",
-    "lever/dlocal:2": "modality: hybrid only in Lever workplaceType, not in the text",
-    "lever/yuno:2": "modality: remote only in Lever workplaceType, description is blank",
+    ("lever/dlocal:0", "modality"): "hybrid only in Lever workplaceType, not in the text",
+    ("lever/dlocal:1", "modality"): "hybrid only in Lever workplaceType, not in the text",
+    ("lever/dlocal:2", "modality"): "hybrid only in Lever workplaceType, not in the text",
+    ("lever/yuno:2", "modality"): "remote only in Lever workplaceType, description is blank",
 }
+FIELDS = ("seniority", "modality", "stack", "lang")
 
 
-def _case(key: str) -> object:
-    gap = KNOWN_GAPS.get(key)
-    return pytest.param(key, marks=pytest.mark.xfail(reason=gap, strict=True)) if gap else key
+def _case(key: str, field: str) -> object:
+    gap = KNOWN_GAPS.get((key, field))
+    marks = [pytest.mark.xfail(reason=gap, strict=True)] if gap else []
+    return pytest.param(key, field, marks=marks, id=f"{key}-{field}")
 
 
 def test_expected_covers_18_postings() -> None:
     assert len(EXPECTED) == 18
 
 
-@pytest.mark.parametrize("key", [_case(key) for key in sorted(EXPECTED)])
-def test_ats_posting(key: str) -> None:
+@pytest.mark.parametrize(
+    ("key", "field"), [_case(key, field) for key in sorted(EXPECTED) for field in FIELDS]
+)
+def test_ats_posting(key: str, field: str) -> None:
     path, index = key.rsplit(":", 1)
     original = _posting(path, int(index))
     actual = extract(original)
-    expected = EXPECTED[key]
+    expected = EXPECTED[key][field]
     assert actual is not original
     assert original.seniority is None
-    assert actual.seniority == expected["seniority"]
-    assert actual.modality == expected["modality"]
-    assert set(actual.stack) == set(expected["stack"])
-    assert actual.lang == expected["lang"]
+    value = getattr(actual, field)
+    if field == "stack":
+        assert set(value) == set(expected)
+    else:
+        assert value == expected
 
 
 @pytest.mark.parametrize(
@@ -223,3 +230,15 @@ def test_existing_fields_are_preserved() -> None:
     job.stack = ["Custom"]
     assert extract(job).seniority == "senior"
     assert extract(job).stack == ["Custom"]
+
+
+def test_employer_name_is_not_its_own_technology() -> None:
+    job = _job(
+        "Backend Engineer", description="Build GitLab features in Go and Ruby.", company="GitLab"
+    )
+    assert "GitLab" not in extract(job).stack
+
+
+def test_title_does_not_lend_context_to_another_line() -> None:
+    job = _job("Backend Engineer", description="Go to market with our sales team.")
+    assert "Go" not in extract(job).stack
