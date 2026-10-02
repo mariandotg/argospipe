@@ -36,6 +36,18 @@ class SourceStatus(BaseModel):
     fetched: int
 
 
+class OfferLink(BaseModel):
+    fingerprint: str
+    source: str
+    external_id: str
+
+
+class Unscored(BaseModel):
+    fingerprint: str
+    kind: Literal["missing_description", "failed"]
+    reasons: list[str] = Field(default_factory=list)
+
+
 class RunMatch(BaseModel):
     job: JobRecord
     result: MatchResult
@@ -52,6 +64,8 @@ class RunResult(BaseModel):
     matched_count: int = 0
     matches: list[RunMatch] = Field(default_factory=list)
     discards: list[Discard] = Field(default_factory=list)
+    links: list[OfferLink] = Field(default_factory=list)
+    unscored: list[Unscored] = Field(default_factory=list)
     tokens_in: int = 0
     tokens_out: int = 0
     cost_usd: float = 0.0
