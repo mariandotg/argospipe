@@ -1,6 +1,8 @@
 import re
 from pathlib import Path
 
+import pytest
+
 from argospipe.core.models import Discard, JobRecord, RunMatch, RunResult, SourceStatus
 from argospipe.llm.schemas import FitReason, MatchResult
 from argospipe.report.render import render
@@ -104,3 +106,28 @@ def test_empty_run_renders(tmp_path: Path) -> None:
     assert "argospipe run #0" in html
     assert "No offers met the threshold." in html
     assert "Below threshold" not in html
+
+
+@pytest.mark.parametrize(
+    "url", ["javascript:alert(1)", " JavaScript:alert(1)", "data:text/html,<b>x</b>", "vbscript:x"]
+)
+def test_non_http_offer_urls_are_not_linked(tmp_path: Path, url: str) -> None:
+    for score in (90, 10):
+        result = RunResult(
+            run_id=3, started_at="2026-10-01", matches=[_match("Evil", score, url=url)]
+        )
+        html = render(result, tmp_path / "r.html").read_text(encoding="utf-8")
+        assert "javascript:" not in html.lower()
+        assert "data:text" not in html
+        assert "vbscript:" not in html
+        assert "Evil" in html
+
+
+def test_http_offer_urls_are_linked(tmp_path: Path) -> None:
+    result = RunResult(
+        run_id=4,
+        started_at="2026-10-01",
+        matches=[_match("Good", 90, url="https://jobs.example/1")],
+    )
+    html = render(result, tmp_path / "r.html").read_text(encoding="utf-8")
+    assert '<a href="https://jobs.example/1">Good</a>' in html
