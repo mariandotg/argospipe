@@ -145,8 +145,12 @@ def _print_run_summary(result: RunResult, threshold: int, dry_run: bool) -> None
         sources.add_row(source.name, status, str(source.fetched))
     console.print(sources)
 
+    failed_sources = [source.name for source in result.sources if not source.ok]
+    if failed_sources:
+        console.print(f"[red]Failed sources:[/red] {escape(', '.join(failed_sources))}")
     console.print(
-        f"New: {result.new_count} · Discarded: {result.discarded_count} · "
+        f"New: {result.new_count} · Closed: {result.closed_count} · "
+        f"Discarded: {result.discarded_count} · "
         f"Missing description: {result.missing_description_count} · "
         f"Matched: {result.matched_count} · Failed: {result.failed_count}"
     )

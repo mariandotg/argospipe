@@ -2,7 +2,7 @@ import asyncio
 import sqlite3
 from collections import Counter
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import anthropic
 
@@ -24,6 +24,7 @@ from argospipe.core.rank import rank
 from argospipe.db import connect, migrate
 from argospipe.db.repo import (
     add_job_source,
+    close_stale_jobs,
     finish_run,
     get_cached_match,
     job_exists,
@@ -74,9 +75,23 @@ def build_source(source: SourceConfig) -> Source:
     raise AssertionError(f"Unknown source config: {source!r}")
 
 
-async def _fetch(source: Source) -> tuple[SourceStatus, list[RawJob]]:
+def _build_sources(configs: Sequence[SourceConfig]) -> list[Source]:
+    sources: list[Source] = []
+    for source in configs:
+        try:
+            sources.append(build_source(source))
+        except Exception as exc:
+            name = getattr(source, "name", None) or source.type
+            sources.append(_UnavailableSource(name, str(exc) or type(exc).__name__))
+    return sources
+
+
+async def _fetch(source: Source, timeout_s: float) -> tuple[SourceStatus, list[RawJob]]:
     try:
-        jobs = await source.fetch()
+        jobs = await asyncio.wait_for(source.fetch(), timeout_s)
+    except TimeoutError:
+        error = f"timed out after {timeout_s:g}s"
+        return SourceStatus(name=source.name, ok=False, error=error, fetched=0), []
     except Exception as exc:
         error = str(exc) or type(exc).__name__
         return SourceStatus(name=source.name, ok=False, error=error, fetched=0), []
@@ -196,9 +211,17 @@ async def _execute(
     max_matches: int,
     now: str,
 ) -> None:
-    fetched = await asyncio.gather(*(_fetch(source) for source in sources))
+    fetched = await asyncio.gather(*(_fetch(source, config.source_timeout_s) for source in sources))
     result.sources = [status for status, _ in fetched]
     result.new_count = _ingest(conn, [job for _, jobs in fetched for job in jobs], now)
+
+    # A failed source did not refresh last_seen for its jobs: closing now would close live offers.
+    if all(status.ok for status in result.sources):
+        before = (datetime.fromisoformat(now) - timedelta(days=config.close_after_days)).isoformat(
+            timespec="seconds"
+        )
+        result.closed_count = close_stale_jobs(conn, before)
+    conn.commit()
 
     selected = open_jobs_without_match(conn, profile_version, PROMPT_VERSION, config.model)
     with_description = [job for job in selected if job.description and job.text_hash]
@@ -227,6 +250,7 @@ def _stats(result: RunResult, dry_run: bool) -> dict[str, object]:
         "sources_ok": sum(source.ok for source in result.sources),
         "sources_failed": sum(not source.ok for source in result.sources),
         "new": result.new_count,
+        "closed": result.closed_count,
         "missing_description": result.missing_description_count,
         "discarded": dict(Counter(discard.stage for discard in result.discards)),
         "matched": result.matched_count,
@@ -267,9 +291,7 @@ async def run(
                 profile,
                 result,
                 provider=provider,
-                sources=sources
-                if sources is not None
-                else [build_source(source) for source in config.sources],
+                sources=sources if sources is not None else _build_sources(config.sources),
                 profile_version=profile_version or read_profile_version(),
                 dry_run=dry_run,
                 max_matches=config.max_matches_per_run if max_matches is None else max_matches,
