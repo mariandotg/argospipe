@@ -47,6 +47,7 @@ class RunResult(BaseModel):
     finished_at: str | None = None
     sources: list[SourceStatus] = Field(default_factory=list)
     new_count: int = 0
+    closed_count: int = 0
     discarded_count: int = 0
     missing_description_count: int = 0
     matched_count: int = 0
