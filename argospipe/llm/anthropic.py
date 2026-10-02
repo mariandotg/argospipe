@@ -8,6 +8,7 @@ from pydantic import BaseModel, ValidationError
 
 from argospipe.config import CandidateProfile, Preferences
 from argospipe.core.models import JobRecord
+from argospipe.credentials import get_api_key
 from argospipe.llm.provider import Usage
 from argospipe.llm.schemas import MatchResult, ProfileExtraction
 
@@ -34,7 +35,8 @@ class AnthropicProvider:
     @property
     def client(self) -> AsyncAnthropic:
         if self._client is None:
-            self._client = AsyncAnthropic()
+            api_key = get_api_key()
+            self._client = AsyncAnthropic(api_key=api_key) if api_key else AsyncAnthropic()
         return self._client
 
     async def _structured(
