@@ -155,11 +155,23 @@ def test_cli_table(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert "n/a" in result.output
 
 
+def test_cli_uses_key_from_keyring(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ARGOSPIPE_HOME", str(tmp_path))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "")
+    monkeypatch.delenv("ANTHROPIC_API_KEY")
+    monkeypatch.setattr(cli, "get_api_key", lambda: "keyring-key")
+    pairs = tmp_path / "pairs.yaml"
+    write_pairs(pairs)
+    monkeypatch.setattr(cli, "AnthropicProvider", lambda _m: FakeProvider({"a": 80, "b": 50}))
+    result = runner.invoke(app, ["eval", "--pairs", str(pairs), "--model", "x", "--json"])
+    assert result.exit_code == 0, result.output
+
+
 def test_cli_missing_key_exits_without_calls(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("ARGOSPIPE_HOME", str(tmp_path))
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setattr(cli, "get_api_key", lambda: None)
     pairs = tmp_path / "pairs.yaml"
     write_pairs(pairs)
     created: list[str] = []
