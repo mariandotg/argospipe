@@ -78,7 +78,17 @@ class FileSourceConfig(BaseModel):
     path: Path
 
 
-SourceConfig = Annotated[NotionSourceConfig | FileSourceConfig, Field(discriminator="type")]
+class AtsSourceConfig(BaseModel):
+    type: Literal["ats"] = "ats"
+    ats: Literal["greenhouse", "lever", "ashby"]
+    slug: str
+    name: str | None = None
+
+
+SourceConfig = Annotated[
+    NotionSourceConfig | FileSourceConfig | AtsSourceConfig,
+    Field(discriminator="type"),
+]
 
 
 class ModelPrice(BaseModel):
