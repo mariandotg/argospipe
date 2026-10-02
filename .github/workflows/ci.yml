@@ -16,3 +16,41 @@ jobs:
       - run: uv run ruff format --check
       - run: uv run mypy
       - run: uv run pytest
+
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv build
+      - name: Assert wheel contains package data
+        run: |
+          set -euo pipefail
+          whl=(dist/*.whl)
+          if [ "${#whl[@]}" -ne 1 ]; then
+            echo "Expected exactly one wheel, got: ${whl[*]}"
+            exit 1
+          fi
+          for path in \
+            argospipe/core/data/stack_v2.yaml \
+            argospipe/db/migrations/001_initial.sql \
+            argospipe/llm/prompts/match_v1.md \
+            argospipe/llm/prompts/profile_v1.md \
+            argospipe/report/template.html.j2 \
+            argospipe/sources/companies.yaml
+          do
+            unzip -l "${whl[0]}" | grep -F "$path" >/dev/null || {
+              echo "Missing in wheel: $path"
+              exit 1
+            }
+          done
+      - name: Install CLI from checkout
+        run: |
+          set -euo pipefail
+          export UV_TOOL_DIR="${{ runner.temp }}/uv-tools"
+          export UV_TOOL_BIN_DIR="${{ runner.temp }}/uv-bin"
+          mkdir -p "$UV_TOOL_DIR" "$UV_TOOL_BIN_DIR"
+          uv tool install --force .
+          echo "$UV_TOOL_BIN_DIR" >> "$GITHUB_PATH"
+      - run: argospipe --help
+      - run: argospipe init --help
