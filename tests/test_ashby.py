@@ -6,7 +6,8 @@ from pathlib import Path
 import httpx
 import pytest
 
-from argospipe.sources.ashby import AshbySource
+from argospipe.config import Modality
+from argospipe.sources.ashby import AshbySource, modality_from_ashby_job
 from argospipe.sources.http import SourceHTTPClient, SourceNotFoundError
 
 FIXTURES = Path(__file__).parent / "fixtures" / "ats" / "ashby"
@@ -160,3 +161,69 @@ def test_fallbacks_and_empty_description_are_literal() -> None:
         assert third.missing_description is True
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    ("job", "expected"),
+    [
+        ({"workplaceType": "Remote"}, "remote"),
+        ({"workplaceType": "Hybrid"}, "hybrid"),
+        ({"workplaceType": "OnSite"}, "onsite"),
+        ({"workplaceType": "onsite"}, "onsite"),
+        ({"workplaceType": None, "isRemote": True}, "remote"),
+        ({"workplaceType": None, "isRemote": False}, None),
+        ({"workplaceType": None, "isRemote": None}, None),
+        ({"workplaceType": "Flexible"}, None),
+    ],
+)
+def test_modality_from_ashby_fields(job: dict[str, object], expected: Modality | None) -> None:
+    assert modality_from_ashby_job(job) == expected
+
+
+def test_workplace_type_on_fetched_jobs() -> None:
+    board = {
+        "jobs": [
+            {
+                "id": "1",
+                "title": "Remote",
+                "jobUrl": "https://jobs.ashbyhq.com/acme/1",
+                "location": "Anywhere",
+                "descriptionPlain": "Role",
+                "workplaceType": "Remote",
+            },
+            {
+                "id": "2",
+                "title": "Hybrid",
+                "jobUrl": "https://jobs.ashbyhq.com/acme/2",
+                "location": "Madrid",
+                "descriptionPlain": "Role",
+                "workplaceType": "Hybrid",
+            },
+            {
+                "id": "3",
+                "title": "Legacy remote flag",
+                "jobUrl": "https://jobs.ashbyhq.com/acme/3",
+                "location": "Anywhere",
+                "descriptionPlain": "Role",
+                "workplaceType": None,
+                "isRemote": True,
+            },
+        ]
+    }
+    body = json.dumps(board).encode()
+
+    async def run() -> None:
+        transport = httpx.MockTransport(lambda _: httpx.Response(200, content=body))
+        async with SourceHTTPClient(transport=transport) as client:
+            jobs = await AshbySource("acme", client=client).fetch()
+
+        assert [job.modality for job in jobs] == ["remote", "hybrid", "remote"]
+
+    asyncio.run(run())
+
+
+def test_unknown_workplace_type_is_not_remote_even_if_is_remote() -> None:
+    from argospipe.sources.ashby import modality_from_ashby_job
+
+    assert modality_from_ashby_job({"workplaceType": "Flexible", "isRemote": True}) is None
+    assert modality_from_ashby_job({"workplaceType": None, "isRemote": True}) == "remote"
