@@ -54,6 +54,7 @@ class GreenhouseSource:
     ) -> None:
         self.slug = slug
         self.name = name or slug
+        self._company_override = name
         self._client = client
         self._semaphore = asyncio.Semaphore(2)
 
@@ -69,7 +70,7 @@ class GreenhouseSource:
         data: dict[str, Any] = response.json()
         jobs: list[RawJob] = []
         for job in data["jobs"]:
-            company = self.name if self.name != self.slug else job["company_name"]
+            company = self._company_override or job["company_name"]
             jobs.append(
                 RawJob(
                     title=job["title"],
