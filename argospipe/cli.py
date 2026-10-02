@@ -5,6 +5,7 @@ from typing import Annotated
 
 import anthropic
 import typer
+import yaml
 from pypdf.errors import PdfReadError
 from rich.console import Console
 from rich.table import Table
@@ -176,7 +177,7 @@ def eval_command(
         loaded = load_pairs(pairs)
         config = load_config() if config_path().exists() else Config()
         default_profile = load_profile() if profile_path().exists() else None
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, yaml.YAMLError) as exc:
         typer.echo(f"Eval failed: {exc}", err=True)
         raise typer.Exit(1) from exc
 
