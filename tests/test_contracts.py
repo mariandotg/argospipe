@@ -21,6 +21,20 @@ def test_raw_job_validates_and_marks_missing_description() -> None:
     assert job.model_dump()["missing_description"] is True
 
 
+@pytest.mark.parametrize("description", ["", "   ", "\n\t"])
+def test_raw_job_marks_blank_description_as_missing(description: str) -> None:
+    job = RawJob(
+        title="Backend Engineer",
+        company="Acme",
+        url="https://example.com/job",
+        description=description,
+        source="file",
+        external_id="job-1",
+    )
+
+    assert job.missing_description is True
+
+
 def test_raw_job_accepts_optional_notion_fields() -> None:
     job = RawJob(
         title="Backend Engineer",
