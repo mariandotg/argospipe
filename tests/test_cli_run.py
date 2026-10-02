@@ -3,6 +3,7 @@ import re
 import webbrowser
 from pathlib import Path
 
+import httpx
 import pytest
 from typer.testing import CliRunner
 
@@ -103,6 +104,7 @@ def test_run_writes_report_and_opens_browser(home: Path, monkeypatch: pytest.Mon
     assert result.exit_code == 0, result.output
     reports = list((home / "reports").glob("*.html"))
     assert len(reports) == 1
+    assert re.fullmatch(r"\d{8}-\d{6}Z\.html", reports[0].name)
     assert reports[0].read_text(encoding="utf-8")
     assert opened == [reports[0].as_uri()]
 
@@ -135,7 +137,14 @@ def test_notion_writeback_only_with_flag_and_sources(
     monkeypatch.setattr(pipeline, "AnthropicProvider", lambda model: FakeProvider())
     calls: list[str] = []
 
-    async def fake_writeback(result, notion_config, *, threshold, token=None, transport=None):
+    async def fake_writeback(
+        result: RunResult,
+        notion_config: NotionSourceConfig,
+        *,
+        threshold: int,
+        token: str | None = None,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> WritebackReport:
         calls.append(notion_config.database_id)
         return WritebackReport()
 
@@ -162,10 +171,25 @@ def test_notion_writeback_only_with_flag_and_sources(
 def test_notion_writeback_skipped_on_dry_run(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     configure(home)
     monkeypatch.delenv("ANTHROPIC_API_KEY")
+    notion = NotionSourceConfig(
+        database_id="db-dry",
+        fields=NotionFields(
+            title="Name", company="Co", location="Geo", url="Link", description="Desc"
+        ),
+    )
+    cfg = config.load_config()
+    config.save_config(cfg.model_copy(update={"sources": [*cfg.sources, notion]}))
     calls: list[str] = []
 
-    async def fake_writeback(*_args, **_kwargs):
-        calls.append(True)
+    async def fake_writeback(
+        _result: RunResult,
+        notion_config: NotionSourceConfig,
+        *,
+        threshold: int,
+        token: str | None = None,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> WritebackReport:
+        calls.append(notion_config.database_id)
         return WritebackReport()
 
     monkeypatch.setattr("argospipe.cli.writeback", fake_writeback)
@@ -174,6 +198,75 @@ def test_notion_writeback_skipped_on_dry_run(home: Path, monkeypatch: pytest.Mon
 
     assert result.exit_code == 0
     assert calls == []
+    assert "skipped on dry runs" in result.output
+
+
+def test_notion_writeback_warns_without_notion_source(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    configure(home)
+    monkeypatch.setattr(pipeline, "AnthropicProvider", lambda model: FakeProvider())
+
+    result = runner.invoke(app, ["run", "--no-open", "--notion-writeback"])
+
+    assert result.exit_code == 0, result.output
+    assert "no Notion sources are configured" in result.output
+
+
+def test_notion_writeback_page_errors_still_exit_zero(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    configure(home)
+    monkeypatch.setattr(pipeline, "AnthropicProvider", lambda model: FakeProvider())
+    notion = NotionSourceConfig(
+        database_id="db-pages",
+        fields=NotionFields(
+            title="Name", company="Co", location="Geo", url="Link", description="Desc"
+        ),
+    )
+    cfg = config.load_config()
+    config.save_config(cfg.model_copy(update={"sources": [*cfg.sources, notion]}))
+
+    async def failing_pages(
+        _result: RunResult,
+        _notion_config: NotionSourceConfig,
+        *,
+        threshold: int,
+        token: str | None = None,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> WritebackReport:
+        return WritebackReport(errors=["page abc: connection reset"])
+
+    monkeypatch.setattr("argospipe.cli.writeback", failing_pages)
+
+    result = runner.invoke(app, ["run", "--no-open", "--notion-writeback"])
+
+    assert result.exit_code == 0, result.output
+    assert "page abc: connection reset" in result.output
+    assert "errors 1" in result.output
+
+
+def test_notion_writeback_missing_token_exits_one(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    configure(home)
+    monkeypatch.setattr(pipeline, "AnthropicProvider", lambda model: FakeProvider())
+    monkeypatch.delenv("NOTION_TOKEN", raising=False)
+    notion = NotionSourceConfig(
+        database_id="db-token",
+        fields=NotionFields(
+            title="Name", company="Co", location="Geo", url="Link", description="Desc"
+        ),
+    )
+    cfg = config.load_config()
+    config.save_config(cfg.model_copy(update={"sources": [*cfg.sources, notion]}))
+
+    result = runner.invoke(app, ["run", "--no-open", "--notion-writeback"])
+
+    assert result.exit_code == 1, result.output
+    assert "Notion writeback failed:" in result.output
+    assert "NOTION_TOKEN" in result.output
+    assert "Traceback" not in result.output
 
 
 def test_notion_writeback_schema_error_exits_one(
@@ -190,7 +283,14 @@ def test_notion_writeback_schema_error_exits_one(
     cfg = config.load_config()
     config.save_config(cfg.model_copy(update={"sources": [*cfg.sources, notion]}))
 
-    async def schema_error(*_args, **_kwargs):
+    async def schema_error(
+        _result: RunResult,
+        _notion_config: NotionSourceConfig,
+        *,
+        threshold: int,
+        token: str | None = None,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> WritebackReport:
         raise NotionWritebackError("schema mismatch")
 
     monkeypatch.setattr("argospipe.cli.writeback", schema_error)

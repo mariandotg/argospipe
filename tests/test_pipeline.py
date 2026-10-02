@@ -4,6 +4,8 @@ import sqlite3
 from collections.abc import Iterator
 from pathlib import Path
 
+import anthropic
+import httpx
 import pytest
 
 from argospipe import config as config_module
@@ -246,6 +248,28 @@ def test_failed_match_counts_cost_and_run_continues(conn: sqlite3.Connection) ->
     assert result.failed_count == 1
     assert [match.job.company for match in result.matches] == ["Globex"]
     assert result.cost_usd == pytest.approx(0.003)
+
+
+class ApiErrorProvider(FakeProvider):
+    async def match(
+        self, profile: CandidateProfile, preferences: Preferences, job: JobRecord
+    ) -> tuple[MatchResult, Usage]:
+        if job.company == "Acme":
+            request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+            raise anthropic.APIError("service unavailable", request, body=None)
+        return await super().match(profile, preferences, job)
+
+
+def test_api_error_records_unscored_failed(conn: sqlite3.Connection) -> None:
+    result = run(conn, ApiErrorProvider(), [FakeSource(JOBS)])
+
+    assert result.failed_count == 1
+    failed = [u for u in result.unscored if u.kind == "failed"]
+    assert len(failed) == 1
+    acme_fp = fingerprint("Acme", "Senior Backend Engineer", "Remote")
+    assert failed[0].fingerprint == acme_fp
+    assert "service unavailable" in failed[0].reasons[0]
+    assert [match.job.company for match in result.matches] == ["Globex"]
 
 
 def test_run_without_price_for_model_fails_before_matching(conn: sqlite3.Connection) -> None:
