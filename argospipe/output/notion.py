@@ -148,7 +148,7 @@ async def writeback(
     result: RunResult,
     config: NotionSourceConfig,
     *,
-    threshold: int = 70,
+    threshold: int,
     token: str | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> WritebackReport:
