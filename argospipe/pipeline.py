@@ -18,7 +18,7 @@ from argospipe.config import (
 from argospipe.config import profile_version as read_profile_version
 from argospipe.core.extract import extract
 from argospipe.core.fingerprint import fingerprint, text_hash
-from argospipe.core.models import JobRecord, RunMatch, RunResult, SourceStatus
+from argospipe.core.models import JobRecord, OfferLink, RunMatch, RunResult, SourceStatus, Unscored
 from argospipe.core.prefilter import prefilter
 from argospipe.core.rank import rank
 from argospipe.db import connect, migrate
@@ -118,10 +118,15 @@ def _record(raw: RawJob, now: str) -> JobRecord:
     )
 
 
-def _ingest(conn: sqlite3.Connection, raw_jobs: list[RawJob], now: str) -> int:
+def _ingest(
+    conn: sqlite3.Connection, raw_jobs: list[RawJob], now: str, links: list[OfferLink]
+) -> int:
     new: set[str] = set()
     for raw in raw_jobs:
         job = extract(_record(raw, now))
+        links.append(
+            OfferLink(fingerprint=job.fingerprint, source=raw.source, external_id=raw.external_id)
+        )
         if job.fingerprint not in new and not job_exists(conn, job.fingerprint):
             new.add(job.fingerprint)
         upsert_job(conn, job, now)
@@ -164,9 +169,16 @@ async def _match_all(
             except LLMOutputError as exc:
                 spend(exc.usage)
                 result.failed_count += 1
+                result.unscored.append(
+                    Unscored(fingerprint=job.fingerprint, kind="failed", reasons=[str(exc)])
+                )
                 return None
-            except anthropic.APIError:
+            except anthropic.APIError as exc:
                 result.failed_count += 1
+                reason = str(exc) or type(exc).__name__
+                result.unscored.append(
+                    Unscored(fingerprint=job.fingerprint, kind="failed", reasons=[reason])
+                )
                 return None
             spend(usage)
             save_match(
@@ -214,7 +226,8 @@ async def _execute(
 ) -> None:
     fetched = await asyncio.gather(*(_fetch(source, config.source_timeout_s) for source in sources))
     result.sources = [status for status, _ in fetched]
-    result.new_count = _ingest(conn, [job for _, jobs in fetched for job in jobs], now)
+    all_jobs = [job for _, jobs in fetched for job in jobs]
+    result.new_count = _ingest(conn, all_jobs, now, result.links)
 
     # A failed source did not refresh last_seen for its jobs: closing now would close live offers.
     if all(status.ok for status in result.sources):
@@ -226,7 +239,12 @@ async def _execute(
 
     selected = open_jobs_without_match(conn, profile_version, PROMPT_VERSION, config.model)
     with_description = [job for job in selected if job.description and job.text_hash]
-    result.missing_description_count = len(selected) - len(with_description)
+    missing_description = [job for job in selected if not job.description or not job.text_hash]
+    result.missing_description_count = len(missing_description)
+    result.unscored.extend(
+        Unscored(fingerprint=job.fingerprint, kind="missing_description")
+        for job in missing_description
+    )
 
     kept, prefiltered_out = prefilter(
         with_description, profile.preferences, profile_stack=profile.profile.stack
