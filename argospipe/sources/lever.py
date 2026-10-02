@@ -2,6 +2,7 @@ import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
+from argospipe.config import Modality
 from argospipe.sources.base import RawJob
 from argospipe.sources.greenhouse import _description
 from argospipe.sources.http import SourceHTTPClient
@@ -9,6 +10,16 @@ from argospipe.sources.http import SourceHTTPClient
 
 def _posted_at(created_at_ms: int) -> str:
     return datetime.fromtimestamp(created_at_ms / 1000, tz=UTC).strftime("%Y-%m-%d")
+
+
+def modality_from_workplace_type(workplace_type: object) -> Modality | None:
+    if workplace_type == "remote":
+        return "remote"
+    if workplace_type == "hybrid":
+        return "hybrid"
+    if workplace_type == "onsite":
+        return "onsite"
+    return None
 
 
 def _location(categories: dict[str, Any]) -> str | None:
@@ -79,6 +90,7 @@ class LeverSource:
                     company=company,
                     url=posting["hostedUrl"],
                     location=_location(categories),
+                    modality=modality_from_workplace_type(posting.get("workplaceType")),
                     description=_posting_description(posting),
                     posted_at=_posted_at(posting["createdAt"]),
                     source_name=company,
