@@ -1,9 +1,25 @@
 import asyncio
 from typing import Any
 
+from argospipe.config import Modality
 from argospipe.sources.base import RawJob
 from argospipe.sources.greenhouse import _description
 from argospipe.sources.http import SourceHTTPClient
+
+
+def modality_from_ashby_job(job: dict[str, Any]) -> Modality | None:
+    workplace_type = job.get("workplaceType")
+    if isinstance(workplace_type, str) and workplace_type.strip():
+        normalized = workplace_type.strip().lower().replace("-", "")
+        if normalized == "remote":
+            return "remote"
+        if normalized == "hybrid":
+            return "hybrid"
+        if normalized == "onsite":
+            return "onsite"
+    if job.get("isRemote") is True:
+        return "remote"
+    return None
 
 
 def _posted_at(published_at: str | None) -> str | None:
@@ -70,6 +86,7 @@ class AshbySource:
                     company=company,
                     url=job_url,
                     location=_ashby_location(job) or None,
+                    modality=modality_from_ashby_job(job),
                     description=_ashby_description(job),
                     posted_at=_posted_at(job.get("publishedAt")),
                     source_name=company,
