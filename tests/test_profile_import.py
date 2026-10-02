@@ -145,6 +145,7 @@ def test_cli_missing_key_exits_without_provider_call(
 ) -> None:
     monkeypatch.setenv("ARGOSPIPE_HOME", str(tmp_path / "data"))
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setattr(cli, "get_api_key", lambda: None)
     cv = _text_cv(tmp_path)
     provider = FakeProvider()
     monkeypatch.setattr(cli, "AnthropicProvider", lambda model: provider)
@@ -152,7 +153,7 @@ def test_cli_missing_key_exits_without_provider_call(
     result = runner.invoke(cli.app, ["profile", "import", str(cv)])
 
     assert result.exit_code == 1
-    assert "ANTHROPIC_API_KEY" in result.output
+    assert "API key" in result.output
     assert provider.calls == []
     assert not (tmp_path / "data" / "profile.yaml").exists()
 

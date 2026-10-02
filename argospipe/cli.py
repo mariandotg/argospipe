@@ -1,5 +1,4 @@
 import asyncio
-import os
 import re
 import sqlite3
 from pathlib import Path
@@ -27,6 +26,8 @@ from argospipe.config import (
     save_config,
 )
 from argospipe.core.models import RunResult
+from argospipe.credentials import get_api_key
+from argospipe.init_wizard import init_command
 from argospipe.llm.anthropic import AnthropicProvider, LLMOutputError
 from argospipe.llm.provider import Usage, cost_usd
 from argospipe.profile_import import import_profile
@@ -50,8 +51,12 @@ def profile_import(
     if out_path.exists() and not force:
         typer.echo(f"Profile already exists: {out_path}. Use --force to overwrite it.", err=True)
         raise typer.Exit(1)
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        typer.echo("ANTHROPIC_API_KEY is required to import a profile.", err=True)
+    if not get_api_key():
+        typer.echo(
+            "An Anthropic API key is required to import a profile. "
+            "Set ANTHROPIC_API_KEY or run `argospipe init`.",
+            err=True,
+        )
         raise typer.Exit(1)
 
     try:
@@ -92,19 +97,13 @@ def profile_import(
     console.print("Edit profile.yaml to fill in preferences by hand.")
 
 
-@app.command()
-def run(
-    dry_run: Annotated[bool, typer.Option("--dry-run", help="Skip the LLM.")] = False,
-    json_output: Annotated[bool, typer.Option("--json", help="Print the result as JSON.")] = False,
-    max_matches: Annotated[
-        int | None, typer.Option("--max-matches", help="Cap LLM matches.")
-    ] = None,
-    no_open: Annotated[bool, typer.Option("--no-open", help="Do not open the report.")] = False,
-    notion_writeback: Annotated[
-        bool, typer.Option("--notion-writeback", help="Write score and reasons back to Notion.")
-    ] = False,
+def execute_run(
+    dry_run: bool = False,
+    json_output: bool = False,
+    max_matches: int | None = None,
+    no_open: bool = False,
+    notion_writeback: bool = False,
 ) -> None:
-    """Read your sources, match new offers, and open the report."""
     if not profile_path().exists():
         typer.echo(
             f"No profile found at {profile_path()}. Run `argospipe profile import <cv>` first.",
@@ -117,9 +116,10 @@ def run(
             err=True,
         )
         raise typer.Exit(1)
-    if not dry_run and not os.environ.get("ANTHROPIC_API_KEY"):
+    if not dry_run and not get_api_key():
         typer.echo(
-            "ANTHROPIC_API_KEY is required to match offers. Use --dry-run to skip the LLM.",
+            "An Anthropic API key is required to match offers. "
+            "Set ANTHROPIC_API_KEY, run `argospipe init`, or use --dry-run.",
             err=True,
         )
         raise typer.Exit(1)
@@ -138,6 +138,36 @@ def run(
         typer.echo(result.model_dump_json(indent=2))
         return
     _print_run_summary(result, profile.preferences.threshold, dry_run)
+
+
+@app.command()
+def run(
+    dry_run: Annotated[bool, typer.Option("--dry-run", help="Skip the LLM.")] = False,
+    json_output: Annotated[bool, typer.Option("--json", help="Print the result as JSON.")] = False,
+    max_matches: Annotated[
+        int | None, typer.Option("--max-matches", help="Cap LLM matches.")
+    ] = None,
+    no_open: Annotated[bool, typer.Option("--no-open", help="Do not open the report.")] = False,
+    notion_writeback: Annotated[
+        bool, typer.Option("--notion-writeback", help="Write score and reasons back to Notion.")
+    ] = False,
+) -> None:
+    """Read your sources, match new offers, and open the report."""
+    execute_run(
+        dry_run=dry_run,
+        json_output=json_output,
+        max_matches=max_matches,
+        no_open=no_open,
+        notion_writeback=notion_writeback,
+    )
+
+
+@app.command()
+def init(
+    force: Annotated[bool, typer.Option("--force", help="Overwrite existing files.")] = False,
+) -> None:
+    """Interactive setup: CV, profile, preferences, API key, and sources."""
+    init_command(force=force)
 
 
 def _print_run_summary(result: RunResult, threshold: int, dry_run: bool) -> None:
