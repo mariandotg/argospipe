@@ -215,10 +215,12 @@ async def _execute(
     result.sources = [status for status, _ in fetched]
     result.new_count = _ingest(conn, [job for _, jobs in fetched for job in jobs], now)
 
-    before = (datetime.fromisoformat(now) - timedelta(days=config.close_after_days)).isoformat(
-        timespec="seconds"
-    )
-    result.closed_count = close_stale_jobs(conn, before)
+    # A failed source did not refresh last_seen for its jobs: closing now would close live offers.
+    if all(status.ok for status in result.sources):
+        before = (datetime.fromisoformat(now) - timedelta(days=config.close_after_days)).isoformat(
+            timespec="seconds"
+        )
+        result.closed_count = close_stale_jobs(conn, before)
     conn.commit()
 
     selected = open_jobs_without_match(conn, profile_version, PROMPT_VERSION, config.model)

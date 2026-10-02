@@ -366,3 +366,18 @@ def test_source_timeout_is_isolated(conn: sqlite3.Connection) -> None:
     assert (slow.ok, slow.error) == (False, "timed out after 0.01s")
     assert fake.ok
     assert result.matched_count == 2
+
+
+def test_failed_source_blocks_closing_live_offers(conn: sqlite3.Connection) -> None:
+    run(conn, FakeProvider(), [FakeSource(JOBS[:1])])
+    conn.execute("UPDATE jobs SET last_seen = '2026-09-01T10:00:00+00:00'")
+
+    result = run(conn, None, [FakeSource([]), FailingSource()], dry_run=True)
+
+    assert result.closed_count == 0
+    assert conn.execute("SELECT status FROM jobs").fetchone()["status"] == "open"
+
+
+def test_source_timeout_must_be_positive() -> None:
+    with pytest.raises(ValueError):
+        Config(source_timeout_s=0)
