@@ -168,10 +168,15 @@ async def _match_all(
             conn.commit()
             return RunMatch(job=job, result=match)
 
-    outcomes = await asyncio.gather(*(match_one(job) for job in jobs))
+    # Wait for every task before failing: no match may keep writing after the run closes.
+    outcomes = await asyncio.gather(*(match_one(job) for job in jobs), return_exceptions=True)
+    errors = [outcome for outcome in outcomes if isinstance(outcome, BaseException)]
     result.matches = sorted(
-        (outcome for outcome in outcomes if outcome is not None), key=lambda m: -m.result.score
+        (outcome for outcome in outcomes if isinstance(outcome, RunMatch)),
+        key=lambda m: -m.result.score,
     )
+    if errors:
+        raise errors[0]
     result.matched_count = len(result.matches)
     for run_match in result.matches:
         record_run_job(conn, result.run_id, run_match.job.fingerprint, "matched", [])

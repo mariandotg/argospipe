@@ -261,3 +261,21 @@ def test_prefilter_uses_profile_stack(conn: sqlite3.Connection) -> None:
     assert provider.calls == []
     assert result.discards[0].stage == "prefiltered_out"
     assert "shares nothing with the profile" in result.discards[0].reasons[0]
+
+
+class CrashingProvider(FakeProvider):
+    async def match(
+        self, profile: CandidateProfile, preferences: Preferences, job: JobRecord
+    ) -> tuple[MatchResult, Usage]:
+        if job.company == "Acme":
+            raise RuntimeError("provider bug")
+        await asyncio.sleep(0.05)
+        return await super().match(profile, preferences, job)
+
+
+def test_unexpected_error_waits_for_other_matches_then_fails(conn: sqlite3.Connection) -> None:
+    with pytest.raises(RuntimeError, match="provider bug"):
+        run(conn, CrashingProvider(), [FakeSource(JOBS)])
+
+    saved = conn.execute("SELECT COUNT(*) FROM matches").fetchone()[0]
+    assert saved == 1
