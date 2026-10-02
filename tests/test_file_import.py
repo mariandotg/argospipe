@@ -79,3 +79,31 @@ def test_unknown_extension_raises_clear_value_error(tmp_path: Path) -> None:
         assert "expected .csv or .json" in str(error)
     else:
         raise AssertionError("unknown extension did not raise ValueError")
+
+
+def test_csv_without_required_column_skips_every_row(tmp_path: Path) -> None:
+    path = tmp_path / "no_company.csv"
+    path.write_text("title,url\nBackend Engineer,https://jobs.example/1\n", encoding="utf-8")
+    source = FileSource(FileSourceConfig(path=path))
+
+    jobs = asyncio.run(source.fetch())
+
+    assert jobs == []
+    assert len(source.errors) == 1
+    assert "company" in source.errors[0]
+
+
+def test_json_object_without_required_key_is_skipped(tmp_path: Path) -> None:
+    path = tmp_path / "jobs.json"
+    path.write_text(
+        '[{"title": "A", "company": "Acme", "url": "https://jobs.example/a"},'
+        ' {"title": "B", "url": "https://jobs.example/b"}]',
+        encoding="utf-8",
+    )
+    source = FileSource(FileSourceConfig(path=path))
+
+    jobs = asyncio.run(source.fetch())
+
+    assert [job.title for job in jobs] == ["A"]
+    assert len(source.errors) == 1
+    assert "row 2" in source.errors[0]
