@@ -1,0 +1,67 @@
+# Synthetic, fake pairs. Copy to eval/pairs.yaml and replace with your own.
+pairs:
+  - id: example-strong-match
+    job:
+      title: Senior Backend Engineer
+      company: Examplecorp (fake)
+      location: Remote - LATAM
+      description: >
+        Fake posting. Build Python and PostgreSQL services for a payments product.
+        Five or more years of backend experience. Team works in UTC-3 to UTC-5.
+    profile: null
+    human_score: 90
+    comment: Stack and timezone match.
+  - id: example-clear-miss
+    job:
+      title: Junior iOS Developer
+      company: Notrealinc (fake)
+      location: Berlin, Germany (onsite)
+      description: >
+        Fake posting. Swift and UIKit work on a consumer app. Onsite only.
+        No visa sponsorship. German required.
+    profile: null
+    human_score: 5
+    comment: Wrong seniority, wrong stack, onsite abroad.
+  - id: example-borderline
+    job:
+      title: Full Stack Engineer
+      company: Samplesoft (fake)
+      location: Remote - Americas
+      description: >
+        Fake posting. React front end and Node.js back end. Some Go is a plus.
+        Mid to senior level. Salary not listed.
+    profile: null
+    human_score: 65
+    comment: Half the stack fits; unclear level and pay.
+  - id: example-spanish-posting
+    job:
+      title: Ingeniero Backend Semi Senior
+      company: Empresaficticia SA (fake)
+      location: Buenos Aires, Argentina (híbrido)
+      description: >
+        Oferta ficticia. Desarrollo de APIs en Python y Django con PostgreSQL.
+        Se pide experiencia con AWS y buen nivel de inglés. Modalidad híbrida, dos días por semana.
+    profile: null
+    human_score: 70
+    comment: Good stack, hybrid is acceptable.
+  - id: example-inline-profile
+    job:
+      title: Data Engineer
+      company: Fakedata Labs (fake)
+      location: Remote
+      description: >
+        Fake posting. Build Spark and Airflow pipelines on AWS. Three or more years
+        of data engineering experience.
+    profile:
+      profile:
+        roles: [Data Engineer]
+        seniority: semi-senior
+        years_experience: 4
+        stack: [Python, Spark, Airflow, AWS]
+        languages: [English, Spanish]
+        highlights: [Built batch pipelines for a fake retail company]
+      preferences:
+        modalities: [remote]
+        threshold: 70
+    human_score: 88
+    comment: Inline profile makes this a strong match.
