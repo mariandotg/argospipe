@@ -28,6 +28,7 @@ argospipe run     # fetch, filter, match new offers, open the HTML report
 - **`profile import <cv>`** — Extract your profile from a CV (PDF or text) into `profile.yaml`. Flags: `--force`, `--model <str>` (Anthropic model).
 - **`sources add <url>`** — Add a Greenhouse, Lever, or Ashby job board from its careers URL. Flag: `--name <str>` (company name).
 - **`sources list`** — List configured sources.
+- **`eval --model <str>`** — Compare models against your own scores: agreement and cost. Repeat `--model` to compare several. Flags: `--pairs <path>` (default `eval/pairs.yaml`; start from `eval/pairs.example.yaml`), `--threshold <int>`, `--json`.
 - **`schedule`** — Run argospipe every day (launchd on macOS, cron on Linux). Flags: `--at <HH:MM>` (default `09:00`), `--remove`.
 
 ## Sources
