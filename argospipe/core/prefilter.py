@@ -1,4 +1,5 @@
 from argospipe.config import Preferences
+from argospipe.core.extract import generic_technologies
 from argospipe.core.models import Discard, JobRecord
 from argospipe.core.normalize import normalize_company, normalize_location, normalize_stack
 
@@ -8,7 +9,8 @@ SENIORITY_ORDER = ("intern", "junior", "semi-senior", "senior", "lead", "princip
 def prefilter(
     jobs: list[JobRecord], preferences: Preferences, *, profile_stack: list[str] | None = None
 ) -> tuple[list[JobRecord], list[Discard]]:
-    known_stack = normalize_stack(profile_stack or [])
+    generic = generic_technologies()
+    known_stack = normalize_stack(profile_stack or []) - generic
     kept: list[JobRecord] = []
     discards: list[Discard] = []
     countries = {
@@ -53,9 +55,14 @@ def prefilter(
         if company and company in excluded_companies:
             reasons.append(f"Company {job.company} is excluded")
 
-        job_stack = normalize_stack(job.stack)
-        if known_stack and job_stack and not job_stack & known_stack:
-            reasons.append(f"Stack {', '.join(job.stack)} shares nothing with the profile")
+        specific = {
+            name: tech
+            for tech in job.stack
+            for name in normalize_stack([tech])
+            if name not in generic
+        }
+        if known_stack and len(specific) >= 2 and not specific.keys() & known_stack:
+            reasons.append(f"Stack {', '.join(specific.values())} shares nothing with the profile")
 
         if reasons:
             discards.append(
