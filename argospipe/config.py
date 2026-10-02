@@ -102,7 +102,7 @@ class Config(BaseModel):
     max_cost_per_run_usd: float = 1.0
     match_concurrency: int = 4
     close_after_days: int = 14
-    source_timeout_s: float = 120.0
+    source_timeout_s: float = Field(default=120.0, gt=0)
     pricing: dict[str, ModelPrice] = {
         "claude-haiku-4-5": ModelPrice(input_per_mtok=1.0, output_per_mtok=5.0),
     }
