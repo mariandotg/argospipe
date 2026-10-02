@@ -102,3 +102,38 @@ def test_explicit_name_overrides_company() -> None:
         assert {job.source_name for job in jobs} == {"dLocal Payments"}
 
     asyncio.run(run())
+
+
+def test_description_order_and_location_fallback_are_literal() -> None:
+    posting = {
+        "id": "p-1",
+        "text": "Backend Engineer",
+        "hostedUrl": "https://jobs.lever.co/acme/p-1",
+        "createdAt": 1759276800000,
+        "categories": {"allLocations": ["Buenos Aires", "Remote - LATAM"]},
+        "descriptionPlain": "About the role.",
+        "lists": [
+            {"text": "Requirements", "content": "<li>Java</li><li>Spring</li>"},
+            {"text": "Nice to have", "content": "<li>Kotlin</li>"},
+        ],
+        "additionalPlain": "We offer remote work.",
+    }
+    body = json.dumps([posting]).encode()
+
+    async def run() -> None:
+        transport = httpx.MockTransport(lambda _: httpx.Response(200, content=body))
+        async with SourceHTTPClient(transport=transport) as client:
+            [job] = await LeverSource("acme", client=client).fetch()
+
+        assert job.location == "Buenos Aires, Remote - LATAM"
+        assert job.posted_at == "2025-10-01"
+        assert job.description is not None
+        sections = [s.strip() for s in job.description.split("\n\n")]
+        assert sections[0] == "About the role."
+        assert sections[1].splitlines()[0] == "Requirements"
+        assert "Java" in sections[1] and "Spring" in sections[1]
+        assert sections[2].splitlines()[0] == "Nice to have"
+        assert "Kotlin" in sections[2]
+        assert sections[-1] == "We offer remote work."
+
+    asyncio.run(run())
