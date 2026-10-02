@@ -241,7 +241,9 @@ def test_retries_on_429() -> None:
     result = _result()
     result.links = [link for link in result.links if link.external_id == "page-hi"]
     report = asyncio.run(
-        writeback(result, _config(), token="t", transport=httpx.MockTransport(respond))
+        writeback(
+            result, _config(), threshold=70, token="t", transport=httpx.MockTransport(respond)
+        )
     )
     assert report.updated == ["page-hi"]
     assert fake.patch_count == 1
