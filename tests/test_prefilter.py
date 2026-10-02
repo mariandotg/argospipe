@@ -106,9 +106,29 @@ def test_stack_with_nothing_in_common_is_discarded() -> None:
     assert "shares nothing" in discards[0].reasons[0]
 
 
+def test_generic_technologies_are_not_named_in_the_discard_reason() -> None:
+    kept, discards = prefilter(
+        [job(stack=["Git", "Go", "Rust"])], Preferences(), profile_stack=["Java"]
+    )
+
+    assert kept == []
+    assert "Go, Rust" in discards[0].reasons[0]
+    assert "Git" not in discards[0].reasons[0]
+
+
 @pytest.mark.parametrize(
     ("job_stack", "profile_stack"),
-    [([], ["Java"]), (["Go"], []), (["Go"], None), (["java"], ["Java"])],
+    [
+        ([], ["Java"]),
+        (["Go"], []),
+        (["Go"], None),
+        (["java"], ["Java"]),
+        (["Git"], ["Java"]),
+        (["Git", "Linux", "SQL"], ["Java"]),
+        (["Go"], ["Java"]),
+        (["Java", "Git"], ["Java"]),
+        (["Git", "Go", "Rust"], ["Git", "Go"]),
+    ],
 )
 def test_stack_rule_passes_when_unknown_or_overlapping(
     job_stack: list[str], profile_stack: list[str] | None
@@ -120,7 +140,7 @@ def test_stack_rule_passes_when_unknown_or_overlapping(
 
 
 def test_c_family_languages_do_not_match_each_other() -> None:
-    kept, discards = prefilter([job(stack=["C++"])], Preferences(), profile_stack=["C#"])
+    kept, discards = prefilter([job(stack=["C++", "C"])], Preferences(), profile_stack=["C#"])
 
     assert kept == []
     assert len(discards) == 1
