@@ -109,6 +109,7 @@ def _record(raw: RawJob, now: str) -> JobRecord:
         company=raw.company.strip(),
         title=raw.title.strip(),
         location=raw.location,
+        modality=raw.modality,
         description=description,
         text_hash=text_hash(description) if description else None,
         url=raw.url,

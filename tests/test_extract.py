@@ -1,13 +1,19 @@
+import asyncio
 import html
 import json
 import re
 from pathlib import Path
 
+import httpx
 import pytest
 import yaml
 
+from argospipe.config import Modality
 from argospipe.core.extract import extract
 from argospipe.core.models import JobRecord
+from argospipe.pipeline import _record
+from argospipe.sources.http import SourceHTTPClient
+from argospipe.sources.lever import LeverSource, modality_from_workplace_type
 
 ATS = Path(__file__).parent / "fixtures" / "ats"
 EXPECTED_PATH = Path(__file__).parent / "fixtures" / "extract" / "expected.yaml"
@@ -23,12 +29,14 @@ def _job(
     location: str | None = None,
     description: str | None = None,
     company: str = "Fixture",
+    modality: Modality | None = None,
 ) -> JobRecord:
     return JobRecord(
         fingerprint="fixture",
         company=company,
         title=title,
         location=location,
+        modality=modality,
         description=description,
         first_seen="2026-10-01",
         last_seen="2026-10-01",
@@ -47,17 +55,19 @@ def _posting(path: str, index: int) -> JobRecord:
     parts = [posting["descriptionPlain"]]
     parts.extend(_text(section["content"]) for section in posting["lists"])
     parts.append(posting["additionalPlain"])
-    return _job(posting["text"], posting["categories"]["location"], "\n".join(parts), name)
+    modality = modality_from_workplace_type(posting.get("workplaceType"))
+    return _job(
+        posting["text"],
+        posting["categories"]["location"],
+        "\n".join(parts),
+        name,
+        modality=modality,
+    )
 
 
 # (posting, field) pairs whose true value the extractor cannot reach from title,
 # location and description. Only that field is xfail; the others stay covered.
-KNOWN_GAPS = {
-    ("lever/dlocal:0", "modality"): "hybrid only in Lever workplaceType, not in the text",
-    ("lever/dlocal:1", "modality"): "hybrid only in Lever workplaceType, not in the text",
-    ("lever/dlocal:2", "modality"): "hybrid only in Lever workplaceType, not in the text",
-    ("lever/yuno:2", "modality"): "remote only in Lever workplaceType, description is blank",
-}
+KNOWN_GAPS: dict[tuple[str, str], str] = {}
 FIELDS = ("seniority", "modality", "stack", "lang")
 
 
@@ -242,3 +252,32 @@ def test_employer_name_is_not_its_own_technology() -> None:
 def test_title_does_not_lend_context_to_another_line() -> None:
     job = _job("Backend Engineer", description="Go to market with our sales team.")
     assert "Go" not in extract(job).stack
+
+
+@pytest.mark.parametrize(
+    ("key", "expected_modality"),
+    [
+        ("lever/dlocal:0", "hybrid"),
+        ("lever/dlocal:1", "hybrid"),
+        ("lever/dlocal:2", "hybrid"),
+        ("lever/yuno:2", "remote"),
+    ],
+)
+def test_lever_fixture_modality_via_source_and_pipeline(
+    key: str, expected_modality: Modality
+) -> None:
+    path, index_s = key.rsplit(":", 1)
+    slug = path.split("/", 1)[1]
+    index = int(index_s)
+    fixture = (ATS / "lever" / f"{slug}.json").read_bytes()
+
+    async def fetch_one() -> None:
+        transport = httpx.MockTransport(lambda _: httpx.Response(200, content=fixture))
+        async with SourceHTTPClient(transport=transport) as client:
+            jobs = await LeverSource(slug, client=client).fetch()
+        raw = jobs[index]
+        assert raw.modality == expected_modality
+        job = extract(_record(raw, "2026-10-01"))
+        assert job.modality == expected_modality
+
+    asyncio.run(fetch_one())
