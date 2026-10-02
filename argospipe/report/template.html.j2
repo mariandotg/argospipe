@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>argospipe run {{ result.run_id }}</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f6f7f9;
+      --card: #fff;
+      --text: #1a1d21;
+      --muted: #5c6570;
+      --border: #d8dde3;
+      --accent: #2563eb;
+      --badge-bg: #e8f0fe;
+      --badge-text: #1d4ed8;
+      --ok: #15803d;
+      --fail: #b91c1c;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #121417;
+        --card: #1c2128;
+        --text: #e6edf3;
+        --muted: #9ba3af;
+        --border: #30363d;
+        --accent: #58a6ff;
+        --badge-bg: #1f3a5f;
+        --badge-text: #93c5fd;
+        --ok: #4ade80;
+        --fail: #f87171;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 1.5rem;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      font-size: 15px;
+      line-height: 1.5;
+      background: var(--bg);
+      color: var(--text);
+      max-width: 52rem;
+      margin-inline: auto;
+    }
+    h1 { font-size: 1.35rem; margin: 0 0 0.25rem; }
+    h2 { font-size: 1.1rem; margin: 2rem 0 0.75rem; border-bottom: 1px solid var(--border); padding-bottom: 0.35rem; }
+    h3 { font-size: 0.95rem; margin: 1rem 0 0.5rem; color: var(--muted); }
+    .meta { color: var(--muted); font-size: 0.9rem; }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
+      gap: 0.75rem;
+      margin-top: 1rem;
+    }
+    .stat {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.65rem 0.75rem;
+    }
+    .stat strong { display: block; font-size: 1.25rem; }
+    .stat span { font-size: 0.8rem; color: var(--muted); }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.1rem;
+      margin-bottom: 0.85rem;
+    }
+    .card header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 0.5rem 0.75rem;
+      margin-bottom: 0.5rem;
+    }
+    .card h3 { margin: 0; font-size: 1rem; color: var(--text); }
+    .card h3 a { color: var(--accent); text-decoration: none; }
+    .card h3 a:hover { text-decoration: underline; }
+    .company { color: var(--muted); font-size: 0.9rem; }
+    .location { color: var(--muted); font-size: 0.85rem; }
+    .badge {
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 0.15rem 0.5rem;
+      border-radius: 999px;
+      background: var(--badge-bg);
+      color: var(--badge-text);
+    }
+    .summary { margin: 0.5rem 0; }
+    ul { margin: 0.35rem 0; padding-left: 1.25rem; }
+    li { margin: 0.25rem 0; }
+    .evidence { color: var(--muted); font-size: 0.88rem; }
+    .flags { color: var(--fail); }
+    details { margin: 1rem 0; }
+    details > summary {
+      cursor: pointer;
+      font-weight: 600;
+      color: var(--muted);
+    }
+    .source-ok { color: var(--ok); }
+    .source-fail { color: var(--fail); }
+    .discard-group { margin-bottom: 0.75rem; }
+    .discard-group ul { font-size: 0.88rem; color: var(--muted); }
+    .empty { color: var(--muted); font-style: italic; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>argospipe run #{{ result.run_id }}</h1>
+    <p class="meta">Started {{ result.started_at }}{% if result.finished_at %} · finished {{ result.finished_at }}{% endif %}</p>
+    <div class="stats">
+      <div class="stat"><strong>{{ result.new_count }}</strong><span>New offers</span></div>
+      <div class="stat"><strong>{{ result.discarded_count }}</strong><span>Discarded</span></div>
+      <div class="stat"><strong>{{ result.missing_description_count }}</strong><span>Missing description</span></div>
+      <div class="stat"><strong>{{ result.matched_count }}</strong><span>Matched</span></div>
+      <div class="stat"><strong>${{ "%.4f"|format(result.cost_usd) }}</strong><span>Cost (USD)</span></div>
+      <div class="stat"><strong>{{ result.tokens_in + result.tokens_out }}</strong><span>Tokens ({{ result.tokens_in }} in / {{ result.tokens_out }} out)</span></div>
+    </div>
+  </header>
+
+  <section aria-labelledby="recommended-heading">
+    <h2 id="recommended-heading">Recommended (score ≥ {{ threshold }})</h2>
+    {% if recommended %}
+      {% for match in recommended %}
+        <article class="card">
+          <header>
+            <h3>
+              {% if match.job.url %}
+                {% set link = match.job.url | safe_url %}{% if link %}<a href="{{ link }}">{{ match.job.title }}</a>{% else %}{{ match.job.title }}{% endif %}
+              {% else %}
+                {{ match.job.title }}
+              {% endif %}
+            </h3>
+            <span class="badge">{{ match.result.score }}</span>
+            <span class="company">{{ match.job.company }}</span>
+            {% if match.job.location %}<span class="location">{{ match.job.location }}</span>{% endif %}
+          </header>
+          <p class="summary">{{ match.result.summary }}</p>
+          {% if match.result.fit_reasons %}
+            <p><strong>Fit</strong></p>
+            <ul>
+              {% for fit in match.result.fit_reasons %}
+                <li>{{ fit.reason }} <span class="evidence">— {{ fit.evidence }}</span></li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+          {% if match.result.gaps %}
+            <p><strong>Gaps</strong></p>
+            <ul>{% for gap in match.result.gaps %}<li>{{ gap }}</li>{% endfor %}</ul>
+          {% endif %}
+          {% if match.result.red_flags %}
+            <p class="flags"><strong>Red flags</strong></p>
+            <ul class="flags">{% for flag in match.result.red_flags %}<li>{{ flag }}</li>{% endfor %}</ul>
+          {% endif %}
+          <p><strong>Seniority:</strong> {{ match.result.seniority_match }}</p>
+        </article>
+      {% endfor %}
+    {% else %}
+      <p class="empty">No offers met the threshold.</p>
+    {% endif %}
+  </section>
+
+  {% if below_threshold %}
+  <section aria-labelledby="below-heading">
+    <details>
+      <summary id="below-heading">Below threshold ({{ below_threshold|length }})</summary>
+      {% for match in below_threshold %}
+        <article class="card">
+          <header>
+            <h3>
+              {% if match.job.url %}
+                {% set link = match.job.url | safe_url %}{% if link %}<a href="{{ link }}">{{ match.job.title }}</a>{% else %}{{ match.job.title }}{% endif %}
+              {% else %}
+                {{ match.job.title }}
+              {% endif %}
+            </h3>
+            <span class="badge">{{ match.result.score }}</span>
+            <span class="company">{{ match.job.company }}</span>
+            {% if match.job.location %}<span class="location">{{ match.job.location }}</span>{% endif %}
+          </header>
+          <p class="summary">{{ match.result.summary }}</p>
+          {% if match.result.fit_reasons %}
+            <p><strong>Fit</strong></p>
+            <ul>
+              {% for fit in match.result.fit_reasons %}
+                <li>{{ fit.reason }} <span class="evidence">— {{ fit.evidence }}</span></li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+          {% if match.result.gaps %}
+            <p><strong>Gaps</strong></p>
+            <ul>{% for gap in match.result.gaps %}<li>{{ gap }}</li>{% endfor %}</ul>
+          {% endif %}
+          {% if match.result.red_flags %}
+            <p class="flags"><strong>Red flags</strong></p>
+            <ul class="flags">{% for flag in match.result.red_flags %}<li>{{ flag }}</li>{% endfor %}</ul>
+          {% endif %}
+          <p><strong>Seniority:</strong> {{ match.result.seniority_match }}</p>
+        </article>
+      {% endfor %}
+    </details>
+  </section>
+  {% endif %}
+
+  <section aria-labelledby="discards-heading">
+    <h2 id="discards-heading">Discards</h2>
+    <h3>Prefiltered out</h3>
+    {% if prefiltered_groups %}
+      {% for group in prefiltered_groups %}
+        <div class="discard-group">
+          <p><strong>{{ group.count }}</strong> — {{ group.reason }}</p>
+          <ul>
+            {% for fp in group.fingerprints %}
+              <li>{{ fp }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endfor %}
+    {% else %}
+      <p class="empty">None</p>
+    {% endif %}
+
+    <h3>Ranked out</h3>
+    {% if ranked_groups %}
+      {% for group in ranked_groups %}
+        <div class="discard-group">
+          <p><strong>{{ group.count }}</strong> — {{ group.reason }}</p>
+          <ul>
+            {% for fp in group.fingerprints %}
+              <li>{{ fp }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endfor %}
+    {% else %}
+      <p class="empty">None</p>
+    {% endif %}
+  </section>
+
+  <section aria-labelledby="sources-heading">
+    <h2 id="sources-heading">Sources</h2>
+    {% if result.sources %}
+      <ul>
+        {% for source in result.sources %}
+          <li>
+            {% if source.ok %}
+              <span class="source-ok">OK</span>
+            {% else %}
+              <span class="source-fail">Failed</span>
+            {% endif %}
+            — {{ source.name }} ({{ source.fetched }} fetched)
+            {% if not source.ok and source.error %}
+              <br><span class="evidence">{{ source.error }}</span>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="empty">No source status recorded.</p>
+    {% endif %}
+  </section>
+</body>
+</html>
