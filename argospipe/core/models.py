@@ -50,6 +50,8 @@ class RunResult(BaseModel):
     discarded_count: int = 0
     missing_description_count: int = 0
     matched_count: int = 0
+    failed_count: int = 0
+    cost_cap_reached: bool = False
     matches: list[RunMatch] = Field(default_factory=list)
     discards: list[Discard] = Field(default_factory=list)
     tokens_in: int = 0
