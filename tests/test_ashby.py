@@ -111,3 +111,52 @@ def test_explicit_name_overrides_company() -> None:
         assert {job.source_name for job in jobs} == {"Supabase Inc."}
 
     asyncio.run(run())
+
+
+def test_fallbacks_and_empty_description_are_literal() -> None:
+    board = {
+        "jobs": [
+            {
+                "id": "a-1",
+                "title": "Platform Engineer",
+                "applyUrl": "https://jobs.ashbyhq.com/acme/a-1/application",
+                "location": "Madrid",
+                "secondaryLocations": [{"location": ""}, {"location": "Barcelona"}],
+                "descriptionPlain": "",
+                "descriptionHtml": "<p>Build &amp; run <b>Kubernetes</b>.</p>",
+                "isRemote": None,
+                "workplaceType": None,
+                "address": {"postalAddress": {}},
+            },
+            {
+                "id": "a-2",
+                "title": "Data Engineer",
+                "jobUrl": "https://jobs.ashbyhq.com/acme/a-2",
+                "location": "Remote",
+                "descriptionPlain": "Exact plain text.",
+            },
+            {
+                "id": "a-3",
+                "title": "Empty",
+                "jobUrl": "https://jobs.ashbyhq.com/acme/a-3",
+                "location": "Remote",
+                "descriptionPlain": "",
+                "descriptionHtml": "",
+            },
+        ]
+    }
+    body = json.dumps(board).encode()
+
+    async def run() -> None:
+        transport = httpx.MockTransport(lambda _: httpx.Response(200, content=body))
+        async with SourceHTTPClient(transport=transport) as client:
+            first, second, third = await AshbySource("acme", client=client).fetch()
+
+        assert first.url == "https://jobs.ashbyhq.com/acme/a-1/application"
+        assert first.location == "Madrid; Barcelona"
+        assert first.description is not None
+        assert "Build & run Kubernetes." in first.description
+        assert second.description == "Exact plain text."
+        assert third.missing_description is True
+
+    asyncio.run(run())
