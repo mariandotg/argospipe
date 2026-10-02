@@ -1,0 +1,90 @@
+ashby/nubank:0:
+  seniority: lead
+  modality: hybrid
+  stack: [Java, Python, Go, .NET, AWS]
+  lang: en
+ashby/nubank:1:
+  seniority: lead
+  modality: hybrid
+  stack: [AWS, SQL]
+  lang: en
+ashby/nubank:2:
+  seniority: principal
+  modality: hybrid
+  stack: []
+  lang: en
+ashby/supabase:0:
+  seniority: null # Architect title has no level; generic leadership verbs do not set one.
+  modality: remote
+  stack: [Node.js, JavaScript, React, Python, 'C#', PostgreSQL, MySQL, Vue, Svelte, BigQuery, Supabase]
+  lang: en
+ashby/supabase:1:
+  seniority: null # Support Engineer title and requirements have no level.
+  modality: remote
+  stack: [Node.js, JavaScript, React, PostgreSQL, SQL, Linux, GitHub, Vue, Svelte, Supabase]
+  lang: en
+ashby/supabase:2:
+  seniority: null # Support Engineer title and requirements have no level.
+  modality: remote
+  stack: [Node.js, JavaScript, React, PostgreSQL, SQL, Linux, GitHub, Vue, Svelte, Supabase]
+  lang: en
+greenhouse/datadog:0:
+  seniority: null # Research Engineer has no explicit level.
+  modality: hybrid
+  stack: [Python, Go, C++, Rust, PyTorch, JAX]
+  lang: en
+greenhouse/datadog:1:
+  seniority: null # Research Scientist has no explicit level.
+  modality: null # No work arrangement appears in title, location, or description.
+  stack: [PyTorch]
+  lang: en
+greenhouse/datadog:2:
+  seniority: null # Research Scientist has no explicit level.
+  modality: hybrid
+  stack: [PyTorch]
+  lang: en
+greenhouse/gitlab:0:
+  seniority: null # Mentoring junior engineers does not make this a junior role.
+  modality: remote
+  stack: [TypeScript, JavaScript, Python, GraphQL, REST, GitLab]
+  lang: en
+greenhouse/gitlab:1:
+  seniority: null # "Mid-Senior Experience" does not identify one level.
+  modality: remote
+  stack: [GitLab]
+  lang: en
+greenhouse/gitlab:2:
+  seniority: null # No explicit level.
+  modality: remote
+  stack: [GitLab]
+  lang: en
+lever/dlocal:0:
+  seniority: null # No explicit level.
+  modality: null # Hybrid is ATS metadata, absent from mapped title/location/description.
+  stack: []
+  lang: en
+lever/dlocal:1:
+  seniority: null # No explicit level.
+  modality: null # Hybrid is ATS metadata, absent from mapped title/location/description.
+  stack: []
+  lang: en
+lever/dlocal:2:
+  seniority: null # No explicit level.
+  modality: null # Hybrid is ATS metadata, absent from mapped title/location/description.
+  stack: []
+  lang: en
+lever/yuno:0:
+  seniority: null # "senior decision-makers" describes customers.
+  modality: remote
+  stack: []
+  lang: en
+lever/yuno:1:
+  seniority: null # Manager title and "Technical Engineering Leader" do not map to a specified level.
+  modality: remote
+  stack: [Java, Kotlin, Go, SQL]
+  lang: en
+lever/yuno:2:
+  seniority: null # Description is blank; manager title has no specified level.
+  modality: null # Remote appears in ATS metadata, absent from mapped fields.
+  stack: []
+  lang: null # Description is blank.
