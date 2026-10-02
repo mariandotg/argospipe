@@ -67,7 +67,7 @@ def test_run_prints_summary(home: Path, monkeypatch: pytest.MonkeyPatch) -> None
     configure(home)
     monkeypatch.setattr(pipeline, "AnthropicProvider", lambda model: FakeProvider())
 
-    result = runner.invoke(app, ["run", "--notion-writeback"])
+    result = runner.invoke(app, ["run", "--notion-writeback", "--no-open"])
 
     assert result.exit_code == 0, result.output
     output = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
