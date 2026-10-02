@@ -1,13 +1,14 @@
 from argospipe.config import Preferences
 from argospipe.core.models import Discard, JobRecord
-from argospipe.core.normalize import normalize_company, normalize_location
+from argospipe.core.normalize import normalize_company, normalize_location, normalize_stack
 
 SENIORITY_ORDER = ("intern", "junior", "semi-senior", "senior", "lead", "principal")
 
 
 def prefilter(
-    jobs: list[JobRecord], preferences: Preferences
+    jobs: list[JobRecord], preferences: Preferences, *, profile_stack: list[str] | None = None
 ) -> tuple[list[JobRecord], list[Discard]]:
+    known_stack = normalize_stack(profile_stack or [])
     kept: list[JobRecord] = []
     discards: list[Discard] = []
     countries = {
@@ -51,6 +52,10 @@ def prefilter(
         company = normalize_company(job.company)
         if company and company in excluded_companies:
             reasons.append(f"Company {job.company} is excluded")
+
+        job_stack = normalize_stack(job.stack)
+        if known_stack and job_stack and not job_stack & known_stack:
+            reasons.append(f"Stack {', '.join(job.stack)} shares nothing with the profile")
 
         if reasons:
             discards.append(

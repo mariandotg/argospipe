@@ -42,3 +42,24 @@ def test_ties_keep_input_order() -> None:
 def test_limit_larger_than_input_keeps_all() -> None:
     jobs = [job("first"), job("second")]
     assert rank(jobs, CandidateProfile(), 5) == (jobs, [])
+
+
+def test_c_family_languages_are_distinct_when_ranking() -> None:
+    profile = CandidateProfile(stack=["C#"])
+    cpp, csharp = job("cpp", stack=["C++"]), job("csharp", stack=["C#"])
+
+    top, _ = rank([cpp, csharp], profile, limit=1)
+
+    assert [j.fingerprint for j in top] == ["csharp"]
+
+
+def test_normalize_stack_keeps_symbols() -> None:
+    from argospipe.core.normalize import normalize_stack
+
+    assert normalize_stack(["C", "C++", "C#", ".NET", "Node.js"]) == {
+        "c",
+        "c++",
+        "c#",
+        ".net",
+        "node.js",
+    }
