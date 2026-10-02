@@ -91,6 +91,6 @@ def sources_list() -> None:
         elif isinstance(source, FileSourceConfig):
             table.add_row("file", str(source.path), "—")
         elif isinstance(source, NotionSourceConfig):
-            table.add_row("notion", source.database_id, source.fields.source_name or "—")
+            table.add_row("notion", source.database_id, "—")
 
     Console().print(table)
