@@ -220,3 +220,10 @@ def test_workplace_type_on_fetched_jobs() -> None:
         assert [job.modality for job in jobs] == ["remote", "hybrid", "remote"]
 
     asyncio.run(run())
+
+
+def test_unknown_workplace_type_is_not_remote_even_if_is_remote() -> None:
+    from argospipe.sources.ashby import modality_from_ashby_job
+
+    assert modality_from_ashby_job({"workplaceType": "Flexible", "isRemote": True}) is None
+    assert modality_from_ashby_job({"workplaceType": None, "isRemote": True}) == "remote"

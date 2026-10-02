@@ -17,6 +17,7 @@ def modality_from_ashby_job(job: dict[str, Any]) -> Modality | None:
             return "hybrid"
         if normalized == "onsite":
             return "onsite"
+        return None  # an unknown workplaceType is not a remote signal
     if job.get("isRemote") is True:
         return "remote"
     return None
