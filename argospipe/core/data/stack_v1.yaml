@@ -1,7 +1,7 @@
 version: 1
 technologies:
   Java: []
-  Spring: [Spring Boot]
+  Spring: [Spring Boot, Spring Framework, Spring MVC, Spring Cloud]
   Kotlin: []
   Node.js: [NodeJS]
   TypeScript: [TS]
@@ -37,7 +37,7 @@ technologies:
   Angular: [AngularJS]
   Svelte: []
   Next.js: [NextJS]
-  Express: [Express.js]
+  Express: [Express.js, ExpressJS]
   NestJS: [Nest.js]
   Django: []
   FastAPI: []
@@ -65,3 +65,14 @@ technologies:
   Supabase: []
   Firebase: []
   Figma: []
+
+# Names that are also common words. Matched case-sensitively, with canonical casing.
+case_sensitive:
+  [C, Go, React, REST, Spring, Express, Rust, Swift, Spark, Dart, Ruby, Rails, Flask, Angular,
+   Azure, Snowflake, JAX]
+
+# Bare name needs a nearby technology word. Aliases such as "Apache Spark" match alone.
+context_required: [C, Go, React, Swift, Spark, Dart, Ruby]
+
+# Bare name never matches. Only the aliases match ("Spring Boot", "Express.js").
+alias_only: [Spring, Express]
