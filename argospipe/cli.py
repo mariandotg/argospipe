@@ -2,6 +2,7 @@ import asyncio
 import os
 import re
 import sqlite3
+import webbrowser
 from pathlib import Path
 from typing import Annotated
 
@@ -24,12 +25,15 @@ from argospipe.config import (
     load_config,
     load_profile,
     profile_path,
+    reports_dir,
     save_config,
 )
 from argospipe.core.models import RunResult
 from argospipe.llm.anthropic import AnthropicProvider, LLMOutputError
 from argospipe.llm.provider import Usage, cost_usd
+from argospipe.output.notion import NotionWritebackError, writeback
 from argospipe.profile_import import import_profile
+from argospipe.report.render import render
 from argospipe.sources.detect import UnsupportedURLError, detect
 
 app = typer.Typer(help="Find job offers, filter them, and match them against your CV.")
@@ -137,7 +141,44 @@ def run(
     if json_output:
         typer.echo(result.model_dump_json(indent=2))
         return
-    _print_run_summary(result, profile.preferences.threshold, dry_run)
+
+    threshold = profile.preferences.threshold
+    _print_run_summary(result, threshold, dry_run)
+
+    timestamp = result.started_at.replace(":", "-")
+    report_path = render(result, reports_dir() / f"{timestamp}.html", threshold=threshold)
+    typer.echo(f"Report: {report_path}")
+    if not no_open:
+        webbrowser.open(report_path.as_uri())
+
+    if notion_writeback:
+        if dry_run:
+            pass
+        else:
+            notion_sources = [
+                source for source in config.sources if isinstance(source, NotionSourceConfig)
+            ]
+            if not notion_sources:
+                typer.echo(
+                    "Warning: --notion-writeback was set but no Notion sources are configured.",
+                    err=True,
+                )
+            for source in notion_sources:
+                try:
+                    wb = asyncio.run(
+                        writeback(result, source, threshold=threshold),
+                    )
+                except NotionWritebackError as exc:
+                    typer.echo(str(exc), err=True)
+                    raise typer.Exit(1) from exc
+                typer.echo(
+                    f"Notion {source.database_id}: "
+                    f"updated {len(wb.updated)}, "
+                    f"unchanged {len(wb.unchanged)}, "
+                    f"errors {len(wb.errors)}"
+                )
+                for error in wb.errors:
+                    typer.echo(error, err=True)
 
 
 def _print_run_summary(result: RunResult, threshold: int, dry_run: bool) -> None:

@@ -16,6 +16,7 @@ from argospipe.config import (
     Preferences,
     Profile,
 )
+from argospipe.core.fingerprint import fingerprint
 from argospipe.core.models import JobRecord, RunResult
 from argospipe.db import connect, migrate
 from argospipe.llm.anthropic import LLMOutputError
@@ -383,3 +384,32 @@ def test_failed_source_blocks_closing_live_offers(conn: sqlite3.Connection) -> N
 def test_source_timeout_must_be_positive() -> None:
     with pytest.raises(ValueError):
         Config(source_timeout_s=0)
+
+
+def test_run_fills_links_for_ingested_jobs(conn: sqlite3.Connection) -> None:
+    result = run(conn, FakeProvider(), [FakeSource(JOBS)])
+
+    assert len(result.links) == 5
+    for link, job in zip(result.links, JOBS, strict=True):
+        assert link.source == job.source
+        assert link.external_id == job.external_id
+        assert link.fingerprint == fingerprint(job.company, job.title, job.location)
+
+
+def test_run_fills_unscored_for_missing_description_and_failed_match(
+    conn: sqlite3.Connection,
+) -> None:
+    provider = FakeProvider(fail_for="Acme")
+
+    result = run(conn, provider, [FakeSource(JOBS)])
+
+    missing = [u for u in result.unscored if u.kind == "missing_description"]
+    assert len(missing) == 1
+    hooli_fp = fingerprint("Hooli", "Senior Backend Engineer", "Remote")
+    assert missing[0].fingerprint == hooli_fp
+
+    failed = [u for u in result.unscored if u.kind == "failed"]
+    assert len(failed) == 1
+    acme_fp = fingerprint("Acme", "Senior Backend Engineer", "Remote")
+    assert failed[0].fingerprint == acme_fp
+    assert failed[0].reasons
