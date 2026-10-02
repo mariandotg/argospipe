@@ -3,6 +3,7 @@ import json
 import sqlite3
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Literal
 
 import pytest
 
@@ -21,7 +22,10 @@ from argospipe.db import connect, migrate
 from argospipe.llm.anthropic import LLMOutputError
 from argospipe.llm.provider import Usage
 from argospipe.llm.schemas import MatchResult, ProfileExtraction
+from argospipe.sources.ashby import AshbySource
 from argospipe.sources.base import RawJob, Source
+from argospipe.sources.greenhouse import GreenhouseSource
+from argospipe.sources.lever import LeverSource
 
 DESCRIPTION = "We build backend services in Python and PostgreSQL. Fully remote team."
 PROFILE = Profile(
@@ -191,27 +195,17 @@ def test_failing_source_does_not_stop_the_run(conn: sqlite3.Connection) -> None:
     assert result.matched_count == 2
 
 
-def test_unsupported_configured_sources_fail_without_crashing(
-    conn: sqlite3.Connection, tmp_path: Path
+@pytest.mark.parametrize(
+    ("ats", "expected"),
+    [("greenhouse", GreenhouseSource), ("lever", LeverSource), ("ashby", AshbySource)],
+)
+def test_build_source_builds_every_ats(
+    ats: Literal["greenhouse", "lever", "ashby"], expected: type[Source]
 ) -> None:
-    jobs_file = tmp_path / "jobs.json"
-    jobs_file.write_text(json.dumps([JOBS[0].model_dump(exclude={"missing_description"})]))
-    config = Config(
-        sources=[
-            AtsSourceConfig(ats="lever", slug="acme"),
-            FileSourceConfig(path=jobs_file),
-        ]
-    )
+    source = pipeline.build_source(AtsSourceConfig(ats=ats, slug="acme", name="Acme"))
 
-    result = asyncio.run(
-        pipeline.run(config, PROFILE, provider=FakeProvider(), conn=conn, profile_version="pv1")
-    )
-
-    lever, file = result.sources
-    assert lever.ok is False
-    assert lever.error == "lever sources are not supported yet"
-    assert (file.ok, file.fetched) == (True, 1)
-    assert result.matched_count == 1
+    assert isinstance(source, expected)
+    assert source.name == "Acme"
 
 
 def test_missing_description_never_reaches_provider(conn: sqlite3.Connection) -> None:
