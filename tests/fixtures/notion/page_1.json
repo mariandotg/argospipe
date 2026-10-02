@@ -1,0 +1,33 @@
+{
+  "object": "list",
+  "results": [
+    {
+      "object": "page",
+      "id": "page-open",
+      "properties": {
+        "Name": {"type": "title", "title": [{"plain_text": "Senior "}, {"plain_text": "Engineer"}]},
+        "Company": {"type": "rich_text", "rich_text": [{"plain_text": "Acme"}]},
+        "Link": {"type": "url", "url": "https://example.com/jobs/1"},
+        "Description": {"type": "rich_text", "rich_text": [{"plain_text": "First part. "}, {"plain_text": "Second part."}]},
+        "Geo": {"type": "rich_text", "rich_text": [{"plain_text": "Remote"}]},
+        "Found": {"type": "date", "date": {"start": "2026-09-29", "end": null}},
+        "Status": {"type": "select", "select": {"name": "Open"}}
+      }
+    },
+    {
+      "object": "page",
+      "id": "page-closed",
+      "properties": {
+        "Name": {"type": "title", "title": [{"plain_text": "Closed role"}]},
+        "Company": {"type": "rich_text", "rich_text": [{"plain_text": "Acme"}]},
+        "Link": {"type": "url", "url": "https://example.com/jobs/2"},
+        "Description": {"type": "rich_text", "rich_text": []},
+        "Geo": {"type": "rich_text", "rich_text": []},
+        "Found": {"type": "date", "date": null},
+        "Status": {"type": "select", "select": {"name": "Closed"}}
+      }
+    }
+  ],
+  "next_cursor": "cursor-2",
+  "has_more": true
+}

@@ -67,10 +67,20 @@ class NotionFields(BaseModel):
     source_name: str | None = None
 
 
+class NotionWriteback(BaseModel):
+    score: str = "Argos score"
+    status: str = "Argos estado"
+    reason: str = "Argos motivo"
+    summary: str = "Argos resumen"
+    gaps: str = "Argos gaps"
+
+
 class NotionSourceConfig(BaseModel):
     type: Literal["notion"] = "notion"
     database_id: str
     fields: NotionFields
+    skip_statuses: list[str] = ["Closed"]
+    writeback: NotionWriteback = NotionWriteback()
 
 
 class FileSourceConfig(BaseModel):

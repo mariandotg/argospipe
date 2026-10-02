@@ -1,0 +1,33 @@
+{
+  "object": "list",
+  "results": [
+    {
+      "object": "page",
+      "id": "page-no-description",
+      "properties": {
+        "Name": {"type": "title", "title": [{"plain_text": "Designer"}]},
+        "Company": {"type": "rich_text", "rich_text": [{"plain_text": "Beta"}]},
+        "Link": {"type": "url", "url": "https://example.com/jobs/3"},
+        "Description": {"type": "rich_text", "rich_text": []},
+        "Geo": {"type": "rich_text", "rich_text": []},
+        "Found": {"type": "date", "date": null},
+        "Status": {"type": "select", "select": null}
+      }
+    },
+    {
+      "object": "page",
+      "id": "page-missing",
+      "properties": {
+        "Name": {"type": "title", "title": []},
+        "Company": {"type": "rich_text", "rich_text": []},
+        "Link": {"type": "url", "url": null},
+        "Description": {"type": "rich_text", "rich_text": []},
+        "Geo": {"type": "rich_text", "rich_text": []},
+        "Found": {"type": "date", "date": null},
+        "Status": {"type": "select", "select": null}
+      }
+    }
+  ],
+  "next_cursor": null,
+  "has_more": false
+}

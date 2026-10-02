@@ -1,5 +1,6 @@
 import asyncio
 import os
+import re
 import sqlite3
 from pathlib import Path
 from typing import Annotated
@@ -12,12 +13,14 @@ from rich.markup import escape
 from rich.table import Table
 
 from argospipe import pipeline
+from argospipe import schedule as scheduler
 from argospipe.config import (
     AtsSourceConfig,
     Config,
     FileSourceConfig,
     NotionSourceConfig,
     config_path,
+    data_dir,
     load_config,
     load_profile,
     profile_path,
@@ -217,3 +220,53 @@ def sources_list() -> None:
             table.add_row("notion", source.database_id, "—")
 
     Console().print(table)
+
+
+_TIME_RE = re.compile(r"^(\d{1,2}):(\d{2})$")
+
+
+def _parse_time(value: str) -> tuple[int, int]:
+    match = _TIME_RE.match(value)
+    if match and int(match[1]) < 24 and int(match[2]) < 60:
+        return int(match[1]), int(match[2])
+    typer.echo(f"Invalid time '{value}'. Use HH:MM (24-hour), for example 09:00.", err=True)
+    raise typer.Exit(2)
+
+
+@app.command()
+def schedule(
+    at: Annotated[str, typer.Option("--at", help="Daily run time, HH:MM.")] = "09:00",
+    remove: Annotated[bool, typer.Option("--remove", help="Remove the schedule.")] = False,
+) -> None:
+    """Run argospipe every day (launchd on macOS, cron on Linux)."""
+    hour, minute = _parse_time(at)
+    executable = scheduler.resolve_executable()
+    log_dir = data_dir()
+    log_file = log_dir / scheduler.LOG_NAME
+
+    try:
+        if scheduler.current_platform() == "darwin":
+            if remove:
+                removed = scheduler.remove_macos()
+                typer.echo("Removed the launchd agent." if removed else "No schedule installed.")
+                return
+            plist = scheduler.install_macos(executable, hour, minute, log_dir)
+            typer.echo(f"Installed launchd agent {scheduler.LABEL} at {plist}.")
+        elif scheduler.current_platform().startswith("linux"):
+            if remove:
+                removed = scheduler.remove_linux()
+                typer.echo("Removed the crontab line." if removed else "No schedule installed.")
+                return
+            line = scheduler.install_linux(executable, hour, minute, log_dir)
+            typer.echo(f"Installed crontab line:\n{line}")
+        else:
+            if remove:
+                typer.echo("Nothing was installed on Windows. Delete the task in Task Scheduler.")
+                return
+            typer.echo(scheduler.windows_instructions(executable, hour, minute))
+            return
+    except (OSError, RuntimeError) as exc:
+        typer.echo(f"Schedule failed: {exc}", err=True)
+        raise typer.Exit(1) from exc
+
+    typer.echo(f"Runs daily at {hour:02d}:{minute:02d}. Logs: {log_file}")
