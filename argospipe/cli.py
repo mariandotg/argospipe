@@ -3,10 +3,12 @@ import os
 import re
 import sqlite3
 import webbrowser
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
 import anthropic
+import httpx
 import typer
 from pypdf.errors import PdfReadError
 from rich.console import Console
@@ -145,40 +147,52 @@ def run(
     threshold = profile.preferences.threshold
     _print_run_summary(result, threshold, dry_run)
 
-    timestamp = result.started_at.replace(":", "-")
-    report_path = render(result, reports_dir() / f"{timestamp}.html", threshold=threshold)
+    report_stem = _report_filename_stem(result.started_at)
+    report_path = render(result, reports_dir() / f"{report_stem}.html", threshold=threshold)
     typer.echo(f"Report: {report_path}")
     if not no_open:
         webbrowser.open(report_path.as_uri())
 
-    if notion_writeback:
-        if dry_run:
-            pass
-        else:
-            notion_sources = [
-                source for source in config.sources if isinstance(source, NotionSourceConfig)
-            ]
-            if not notion_sources:
-                typer.echo(
-                    "Warning: --notion-writeback was set but no Notion sources are configured.",
-                    err=True,
+    if notion_writeback and dry_run:
+        typer.echo("Notion writeback is skipped on dry runs.")
+    if notion_writeback and not dry_run:
+        notion_sources = [
+            source for source in config.sources if isinstance(source, NotionSourceConfig)
+        ]
+        if not notion_sources:
+            typer.echo(
+                "Warning: --notion-writeback was set but no Notion sources are configured.",
+                err=True,
+            )
+        for source in notion_sources:
+            try:
+                wb = asyncio.run(
+                    writeback(result, source, threshold=threshold),
                 )
-            for source in notion_sources:
-                try:
-                    wb = asyncio.run(
-                        writeback(result, source, threshold=threshold),
-                    )
-                except NotionWritebackError as exc:
-                    typer.echo(str(exc), err=True)
-                    raise typer.Exit(1) from exc
-                typer.echo(
-                    f"Notion {source.database_id}: "
-                    f"updated {len(wb.updated)}, "
-                    f"unchanged {len(wb.unchanged)}, "
-                    f"errors {len(wb.errors)}"
-                )
-                for error in wb.errors:
-                    typer.echo(error, err=True)
+            except NotionWritebackError as exc:
+                typer.echo(str(exc), err=True)
+                raise typer.Exit(1) from exc
+            except ValueError as exc:
+                typer.echo(f"Notion writeback failed: {exc}", err=True)
+                raise typer.Exit(1) from exc
+            except httpx.HTTPError as exc:
+                typer.echo(f"Notion writeback failed: {exc}", err=True)
+                raise typer.Exit(1) from exc
+            typer.echo(
+                f"Notion {source.database_id}: "
+                f"updated {len(wb.updated)}, "
+                f"skipped {len(wb.unchanged)}, "
+                f"errors {len(wb.errors)}"
+            )
+            for error in wb.errors:
+                typer.echo(error, err=True)
+
+
+def _report_filename_stem(started_at: str) -> str:
+    dt = datetime.fromisoformat(started_at)
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(UTC).replace(tzinfo=None)
+    return dt.strftime("%Y%m%d-%H%M%SZ")
 
 
 def _print_run_summary(result: RunResult, threshold: int, dry_run: bool) -> None:
