@@ -138,3 +138,24 @@ def test_retries_rate_limit_using_retry_after(monkeypatch: pytest.MonkeyPatch) -
     assert asyncio.run(source.fetch()) == []
     assert len(requests) == 2
     assert delays == [2.0]
+
+
+def test_naive_since_is_sent_as_utc() -> None:
+    requests: list[httpx.Request] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"results": [], "has_more": False, "next_cursor": None})
+
+    async def run() -> None:
+        source = NotionSource(
+            _config(skip_statuses=[]),
+            token="secret-token",
+            since=datetime(2026, 9, 30, 12, 0),
+            transport=httpx.MockTransport(respond),
+        )
+        await source.fetch()
+        on_or_after = json.loads(requests[0].content)["filter"]["last_edited_time"]["on_or_after"]
+        assert on_or_after == "2026-09-30T12:00:00+00:00"
+
+    asyncio.run(run())
