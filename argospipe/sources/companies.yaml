@@ -1,0 +1,55 @@
+# Approved 2026-10-01 (MDG-185). Comment = open postings / engineering postings at probe time.
+companies:
+  # --- LATAM ---
+  - {name: Nubank,        ats: ashby,      slug: nubank,        regions: [latam]}              # 115 / 56
+  - {name: Truelogic,     ats: ashby,      slug: truelogic,     regions: [latam]}              # 161 / 110
+  - {name: QuintoAndar,   ats: greenhouse, slug: quintoandar,   regions: [latam]}              # 95 / 17
+  - {name: Clara,         ats: greenhouse, slug: clara,         regions: [latam]}              # 140 / 20
+  - {name: dLocal,        ats: lever,      slug: dlocal,        regions: [latam, es]}          # 52 / 10
+  - {name: Yuno,          ats: lever,      slug: yuno,          regions: [latam, es, eu-remote]} # 38 / 18
+  - {name: VTEX,          ats: greenhouse, slug: vtex,          regions: [latam, es]}          # 31 / 13
+  - {name: Despegar,      ats: lever,      slug: despegar,      regions: [latam]}              # 77 / 7
+  - {name: Addi,          ats: ashby,      slug: addi,          regions: [latam]}              # 34 / 8
+  - {name: Jeeves,        ats: lever,      slug: tryjeeves,     regions: [latam]}              # 67 / 8
+  - {name: Kavak,         ats: lever,      slug: kavak,         regions: [latam]}              # 8 / 5
+  - {name: Cobre,         ats: greenhouse, slug: cobre,         regions: [latam]}              # 18 / 5
+  - {name: Xepelin,       ats: lever,      slug: xepelin,       regions: [latam]}              # 9 / 3
+  - {name: MongoDB,       ats: greenhouse, slug: mongodb,       regions: [latam]}              # 392 / 168
+  - {name: Canonical,     ats: greenhouse, slug: canonical,     regions: [latam, eu-remote]}   # 307 / 172
+  - {name: Datadog,       ats: greenhouse, slug: datadog,       regions: [latam, es]}          # 442 / 157
+  - {name: Brex,          ats: greenhouse, slug: brex,          regions: [latam]}              # 271 / 70
+  - {name: Mural,         ats: ashby,      slug: mural,         regions: [latam, es]}          # 13 / 6
+  - {name: Wizeline,      ats: greenhouse, slug: wizeline,      regions: [latam, es, eu-remote]} # 21 / 11
+  - {name: Turing,        ats: greenhouse, slug: turing,        regions: [latam]}              # 30 / 16
+  - {name: Twilio,        ats: greenhouse, slug: twilio,        regions: [latam, eu-remote]}   # 125 / 56
+  - {name: Fever,         ats: greenhouse, slug: feverup,       regions: [latam, es]}          # 543 / 38
+  - {name: Elastic,       ats: greenhouse, slug: elastic,       regions: [latam, es, eu-remote]} # 390 / 219
+  - {name: Docplanner,    ats: ashby,      slug: docplanner,    regions: [latam, es]}          # 38 / 9
+  - {name: SumUp,         ats: greenhouse, slug: sumup,         regions: [latam]}              # 337 / 41
+  - {name: Cabify,        ats: greenhouse, slug: cabify,        regions: [latam, es]}          # 72 / 3
+  - {name: GitLab,        ats: greenhouse, slug: gitlab,        regions: [latam, eu-remote]}   # 204 / 118
+  - {name: Supabase,      ats: ashby,      slug: supabase,      regions: [latam, eu-remote]}   # 48 / 34
+  - {name: Wikimedia,     ats: greenhouse, slug: wikimedia,     regions: [latam, eu-remote]}   # 11 / 4 # Verificar
+  - {name: Railway,       ats: ashby,      slug: railway,       regions: [latam, eu-remote]}   # 8 / 8 # Verificar
+  # --- España ---
+  - {name: Celonis,       ats: greenhouse, slug: celonis,       regions: [es]}                 # 236 / 136
+  - {name: JetBrains,     ats: greenhouse, slug: jetbrains,     regions: [es]}                 # 70 / 33
+  - {name: N26,           ats: greenhouse, slug: n26,           regions: [es]}                 # 52 / 17
+  - {name: Alan,          ats: ashby,      slug: alan,          regions: [es, eu-remote]}      # 116 / 27
+  - {name: Pleo,          ats: ashby,      slug: pleo,          regions: [es, eu-remote]}      # 36 / 8
+  - {name: Qonto,         ats: lever,      slug: qonto,         regions: [es]}                 # 39 / 10
+  - {name: Lodgify,       ats: lever,      slug: lodgify,       regions: [es, latam]}          # 12 / 3
+  - {name: Jobandtalent,  ats: lever,      slug: jobandtalent,  regions: [es]}                 # 24 / 2
+  - {name: Wallapop,      ats: greenhouse, slug: wallapop,      regions: [es]}                 # 5 / 2
+  - {name: Typeform,      ats: greenhouse, slug: typeform,      regions: [es, eu-remote]}      # 16 / 5
+  - {name: Monzo,         ats: greenhouse, slug: monzo,         regions: [es]}                 # 70 / 16
+  - {name: Proton,        ats: greenhouse, slug: proton,        regions: [es]}                 # 60 / 37
+  - {name: n8n,           ats: ashby,      slug: n8n,           regions: [es, eu-remote]}      # 35 / 9
+  - {name: Back Market,   ats: ashby,      slug: backmarket,    regions: [es]}                 # 35 / 4
+  - {name: Grafana Labs,  ats: greenhouse, slug: grafanalabs,   regions: [es, eu-remote]}      # 120 / 71
+  - {name: ClickHouse,    ats: ashby,      slug: clickhouse,    regions: [es, eu-remote]}      # 194 / 131
+  # --- Remoto Europa ---
+  - {name: Circle,        ats: ashby,      slug: circle,        regions: [eu-remote]}          # 41 / 18
+  - {name: Camunda,       ats: ashby,      slug: camunda,       regions: [eu-remote]}          # 40 / 25
+  - {name: Paddle,        ats: ashby,      slug: paddle,        regions: [eu-remote]}          # 23 / 7
+  - {name: Mollie,        ats: ashby,      slug: mollie,        regions: [eu-remote]}          # 43 / 16 # Verificar
