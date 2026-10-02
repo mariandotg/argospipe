@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Annotated
 
 import anthropic
+import keyring.errors
 import typer
 from anthropic import AsyncAnthropic
 from rich.console import Console
@@ -29,13 +30,14 @@ from argospipe.config import (
     save_config,
     save_profile,
 )
-from argospipe.credentials import get_api_key, save_api_key
+from argospipe.credentials import ENV_VAR, get_api_key, save_api_key
 from argospipe.llm.anthropic import AnthropicProvider, LLMOutputError
 from argospipe.llm.provider import LLMProvider
 from argospipe.profile_import import import_profile
 from argospipe.sources.companies import Region, companies_as_sources
 
 MAX_API_KEY_ATTEMPTS = 3
+MAX_PROMPT_ATTEMPTS = 3
 REGION_CHOICES: tuple[Region, ...] = ("latam", "es", "eu-remote")
 MODALITY_CHOICES: tuple[Modality, ...] = ("remote", "hybrid", "onsite")
 SENIORITY_CHOICES: tuple[Seniority, ...] = (
@@ -111,6 +113,43 @@ def _parse_seniority(value: str) -> Seniority | None:
     return cleaned
 
 
+def _parse_threshold(value: str) -> int:
+    cleaned = value.strip()
+    try:
+        threshold = int(cleaned)
+    except ValueError:
+        raise ValueError("Threshold must be an integer between 0 and 100.") from None
+    if not 0 <= threshold <= 100:
+        raise ValueError("Threshold must be an integer between 0 and 100.")
+    return threshold
+
+
+def _is_invalid_api_key(exc: BaseException) -> bool:
+    return isinstance(exc, (anthropic.AuthenticationError, anthropic.PermissionDeniedError)) or (
+        isinstance(exc, anthropic.APIStatusError) and 400 <= exc.status_code < 500
+    )
+
+
+def _prompt_parsed[T](
+    wizard: InitWizardDeps,
+    message: str,
+    parser: Callable[[str], T],
+    *,
+    default: str = "",
+    hide_input: bool = False,
+) -> T:
+    for attempt in range(1, MAX_PROMPT_ATTEMPTS + 1):
+        raw = wizard.prompt(message, default=default, hide_input=hide_input)
+        try:
+            return parser(raw)
+        except ValueError as exc:
+            if attempt >= MAX_PROMPT_ATTEMPTS:
+                typer.echo(str(exc), err=True)
+                raise typer.Exit(1) from exc
+            typer.echo(str(exc), err=True)
+    raise AssertionError("unreachable")
+
+
 def _ats_key(source: AtsSourceConfig) -> tuple[str, str]:
     return source.ats, source.slug
 
@@ -149,10 +188,47 @@ def _confirm_overwrite(
     return confirm(f"{label} already exists at {path}. Overwrite?", default=False)
 
 
+async def _ensure_api_key(wizard: InitWizardDeps, model: str) -> None:
+    if get_api_key() is not None:
+        return
+    for attempt in range(1, MAX_API_KEY_ATTEMPTS + 1):
+        key = wizard.prompt(
+            "Anthropic API key",
+            hide_input=True,
+        )
+        try:
+            await wizard.validate_api_key(key, model)
+        except (anthropic.APIConnectionError, anthropic.APITimeoutError) as exc:
+            typer.echo(
+                "Network error validating API key. Check your connection and try again.",
+                err=True,
+            )
+            raise typer.Exit(1) from exc
+        except anthropic.APIError as exc:
+            if _is_invalid_api_key(exc):
+                if attempt >= MAX_API_KEY_ATTEMPTS:
+                    typer.echo(f"Invalid API key after {MAX_API_KEY_ATTEMPTS} attempts.", err=True)
+                    raise typer.Exit(1) from None
+                typer.echo("Invalid API key. Try again.", err=True)
+                continue
+            typer.echo(f"API error validating key: {exc}", err=True)
+            raise typer.Exit(1) from exc
+        try:
+            save_api_key(key)
+        except keyring.errors.KeyringError:
+            typer.echo(
+                "Warning: could not store the API key in the system keyring. "
+                f"Set {ENV_VAR} in your environment for future runs.",
+                err=True,
+            )
+            os.environ[ENV_VAR] = key
+        break
+
+
 async def run_init_wizard(
     force: bool = False,
     deps: InitWizardDeps | None = None,
-) -> None:
+) -> bool:
     wizard = deps or InitWizardDeps()
     console = Console()
 
@@ -161,9 +237,11 @@ async def run_init_wizard(
     if not _confirm_overwrite(config_path(), force, wizard.confirm, "Config"):
         raise typer.Exit(0)
 
+    config = load_config() if config_path().exists() else Config()
+    await _ensure_api_key(wizard, config.model)
+
     cv_input = wizard.prompt("Path to your CV (PDF or text)")
     cv_path = Path(cv_input).expanduser()
-    config = load_config() if config_path().exists() else Config()
     provider = wizard.provider_factory(config.model)
 
     try:
@@ -184,64 +262,49 @@ async def run_init_wizard(
         editor(profile_path())
         profile = load_profile()
 
-    modalities_raw = wizard.prompt(
+    modalities = _prompt_parsed(
+        wizard,
         "Preferred modalities (comma-separated: remote, hybrid, onsite)",
+        _parse_modalities,
         default="remote",
     )
     countries_raw = wizard.prompt(
         "Preferred countries (comma-separated ISO codes, empty for any)",
         default="",
     )
-    min_seniority_raw = wizard.prompt(
+    min_seniority = _prompt_parsed(
+        wizard,
         "Minimum seniority (intern, junior, semi-senior, senior, lead, principal; empty for any)",
+        _parse_seniority,
         default="",
     )
     excluded_raw = wizard.prompt(
         "Companies to exclude (comma-separated names, empty for none)",
         default="",
     )
-    threshold_raw = wizard.prompt("Match score threshold", default="70")
+    threshold = _prompt_parsed(
+        wizard,
+        "Match score threshold",
+        _parse_threshold,
+        default="70",
+    )
 
-    try:
-        profile.preferences = Preferences(
-            modalities=_parse_modalities(modalities_raw),
-            countries=_parse_csv(countries_raw.upper()) if countries_raw.strip() else [],
-            min_seniority=_parse_seniority(min_seniority_raw),
-            excluded_companies=_parse_csv(excluded_raw),
-            threshold=int(threshold_raw),
-        )
-    except ValueError as exc:
-        typer.echo(str(exc), err=True)
-        raise typer.Exit(1) from exc
+    profile.preferences = Preferences(
+        modalities=modalities,
+        countries=_parse_csv(countries_raw.upper()) if countries_raw.strip() else [],
+        min_seniority=min_seniority,
+        excluded_companies=_parse_csv(excluded_raw),
+        threshold=threshold,
+    )
 
     save_profile(profile)
 
-    if get_api_key() is None:
-        for attempt in range(1, MAX_API_KEY_ATTEMPTS + 1):
-            key = wizard.prompt(
-                "Anthropic API key",
-                hide_input=True,
-            )
-            try:
-                await wizard.validate_api_key(key, config.model)
-            except anthropic.APIError:
-                if attempt >= MAX_API_KEY_ATTEMPTS:
-                    typer.echo("Invalid API key after 3 attempts.", err=True)
-                    raise typer.Exit(1) from None
-                typer.echo("Invalid API key. Try again.", err=True)
-                continue
-            save_api_key(key)
-            break
-
-    regions_raw = wizard.prompt(
+    regions = _prompt_parsed(
+        wizard,
         "Job board regions (comma-separated: latam, es, eu-remote)",
+        _parse_regions,
         default="latam",
     )
-    try:
-        regions = _parse_regions(regions_raw)
-    except ValueError as exc:
-        typer.echo(str(exc), err=True)
-        raise typer.Exit(1) from exc
 
     merge_company_sources(config, list(regions))
     save_config(config)
@@ -249,13 +312,7 @@ async def run_init_wizard(
     console.print(f"Profile saved to {profile_path()}")
     console.print(f"Config saved to {config_path()}")
 
-    if wizard.confirm("Run argospipe now?", default=True):
-        if wizard.run_command is None:
-            from argospipe.cli import execute_run
-
-            execute_run()
-        else:
-            wizard.run_command()
+    return wizard.confirm("Run argospipe now?", default=True)
 
 
 def init_command(
@@ -263,10 +320,19 @@ def init_command(
     deps: InitWizardDeps | None = None,
 ) -> None:
     """Interactive setup: CV, profile, preferences, API key, and sources."""
+    wizard = deps or InitWizardDeps()
     try:
-        asyncio.run(run_init_wizard(force=force, deps=deps))
+        run_after = asyncio.run(run_init_wizard(force=force, deps=wizard))
     except typer.Exit:
         raise
     except (anthropic.APIError, OSError) as exc:
         typer.echo(f"Init failed: {exc}", err=True)
         raise typer.Exit(1) from exc
+
+    if run_after:
+        if wizard.run_command is None:
+            from argospipe.cli import execute_run
+
+            execute_run()
+        else:
+            wizard.run_command()
