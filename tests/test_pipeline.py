@@ -16,6 +16,7 @@ from argospipe.config import (
     Preferences,
     Profile,
 )
+from argospipe.core.extract import extract
 from argospipe.core.models import JobRecord, RunResult
 from argospipe.db import connect, migrate
 from argospipe.llm.anthropic import LLMOutputError
@@ -383,3 +384,32 @@ def test_failed_source_blocks_closing_live_offers(conn: sqlite3.Connection) -> N
 def test_source_timeout_must_be_positive() -> None:
     with pytest.raises(ValueError):
         Config(source_timeout_s=0)
+
+
+def test_structured_modality_survives_extract(conn: sqlite3.Connection) -> None:
+    job = raw(
+        "Senior Backend Engineer",
+        "Acme",
+        description="Collaboration hubs only; no remote/hybrid wording.",
+    )
+    job.modality = "hybrid"
+
+    run(conn, FakeProvider(), [FakeSource([job])])
+
+    row = conn.execute("SELECT modality FROM jobs").fetchone()
+    assert row["modality"] == "hybrid"
+
+
+def test_record_preserves_modality_before_extract() -> None:
+    raw_job = RawJob(
+        title="Engineer",
+        company="Co",
+        url="https://example.com/1",
+        modality="remote",
+        description="",
+        source="lever:acme",
+        external_id="1",
+    )
+    record = pipeline._record(raw_job, "2026-10-01")
+    assert record.modality == "remote"
+    assert extract(record).modality == "remote"
