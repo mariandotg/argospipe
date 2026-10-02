@@ -1,5 +1,6 @@
 import json
 import sqlite3
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -21,7 +22,7 @@ from argospipe.llm.schemas import MatchResult
 
 
 @pytest.fixture
-def conn(tmp_path: Path) -> sqlite3.Connection:
+def conn(tmp_path: Path) -> Iterator[sqlite3.Connection]:
     db = connect(tmp_path / "argospipe.db")
     migrate(db)
     yield db
