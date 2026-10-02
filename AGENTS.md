@@ -20,3 +20,4 @@ Every PR: tests green, `ruff` and `mypy` clean.
 - Never log or persist the API key. The CV is never stored; only the extracted profile.
 - Schema changes go in a new numbered file in `argospipe/db/migrations/`. Never edit an applied one.
 - Set `ARGOSPIPE_HOME` to redirect the data dir (tests use it).
+- No AI attribution in commits or PRs: no `Co-Authored-By` trailers, no "Generated with" lines.

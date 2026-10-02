@@ -13,3 +13,4 @@ profile.yaml
 reports/
 .DS_Store
 .claude/worktrees/
+.linear.json
