@@ -66,6 +66,8 @@ def test_location_normalizes_text_and_preserves_none() -> None:
         "Engineer | Remote - Argentina",
         "Engineer (Remote) - Argentina",
         "Engineer - Remote",
+        "Engineer (Remote - Argentina)",
+        "Engineer (Remote | Argentina)",
     ],
 )
 def test_chained_location_suffixes_are_all_removed(title: str) -> None:

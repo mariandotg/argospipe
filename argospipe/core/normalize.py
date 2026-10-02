@@ -37,7 +37,7 @@ def normalize_company(company: str) -> str:
 
 
 def _is_title_suffix(value: str) -> bool:
-    parts = re.split(r"[,/&]+", value)
+    parts = re.split(r"[,/&|]+|\s+-\s+", value)
     return all(_normalize_text(part) in TITLE_SUFFIXES for part in parts)
 
 
