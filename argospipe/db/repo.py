@@ -186,3 +186,8 @@ def close_stale_jobs(conn: sqlite3.Connection, before: str) -> int:
         "UPDATE jobs SET status = 'closed' WHERE status = 'open' AND last_seen < ?", (before,)
     )
     return cursor.rowcount
+
+
+def job_exists(conn: sqlite3.Connection, fingerprint: str) -> bool:
+    row = conn.execute("SELECT 1 FROM jobs WHERE fingerprint = ?", (fingerprint,)).fetchone()
+    return row is not None

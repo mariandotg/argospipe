@@ -1,6 +1,7 @@
 import asyncio
 import os
 import re
+import sqlite3
 from pathlib import Path
 from typing import Annotated
 
@@ -9,8 +10,10 @@ import typer
 import yaml
 from pypdf.errors import PdfReadError
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
+from argospipe import pipeline
 from argospipe import schedule as scheduler
 from argospipe.config import (
     AtsSourceConfig,
@@ -24,6 +27,7 @@ from argospipe.config import (
     profile_path,
     save_config,
 )
+from argospipe.core.models import RunResult
 from argospipe.eval import EvalResult, load_pairs, run_eval
 from argospipe.llm.anthropic import AnthropicProvider, LLMOutputError
 from argospipe.llm.provider import Usage, cost_usd
@@ -103,8 +107,74 @@ def run(
     ] = False,
 ) -> None:
     """Read your sources, match new offers, and open the report."""
-    typer.echo("Not implemented yet.")
-    raise typer.Exit(1)
+    if not profile_path().exists():
+        typer.echo(
+            f"No profile found at {profile_path()}. Run `argospipe profile import <cv>` first.",
+            err=True,
+        )
+        raise typer.Exit(1)
+    if not config_path().exists():
+        typer.echo(
+            f"No config found at {config_path()}. Run `argospipe sources add <url>` first.",
+            err=True,
+        )
+        raise typer.Exit(1)
+    if not dry_run and not os.environ.get("ANTHROPIC_API_KEY"):
+        typer.echo(
+            "ANTHROPIC_API_KEY is required to match offers. Use --dry-run to skip the LLM.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    try:
+        config = load_config()
+        profile = load_profile()
+        result = asyncio.run(
+            pipeline.run(config, profile, dry_run=dry_run, max_matches=max_matches)
+        )
+    except (OSError, ValueError, sqlite3.Error, anthropic.AnthropicError) as exc:
+        typer.echo(f"Run failed: {exc}", err=True)
+        raise typer.Exit(1) from exc
+
+    if json_output:
+        typer.echo(result.model_dump_json(indent=2))
+        return
+    _print_run_summary(result, profile.preferences.threshold, dry_run)
+
+
+def _print_run_summary(result: RunResult, threshold: int, dry_run: bool) -> None:
+    console = Console()
+    sources = Table("Source", "Status", "Fetched", title=f"Run {result.run_id}")
+    for source in result.sources:
+        status = "ok" if source.ok else f"[red]failed[/red]: {escape(source.error or '')}"
+        sources.add_row(source.name, status, str(source.fetched))
+    console.print(sources)
+
+    failed_sources = [source.name for source in result.sources if not source.ok]
+    if failed_sources:
+        console.print(f"[red]Failed sources:[/red] {escape(', '.join(failed_sources))}")
+    console.print(
+        f"New: {result.new_count} · Closed: {result.closed_count} · "
+        f"Discarded: {result.discarded_count} · "
+        f"Missing description: {result.missing_description_count} · "
+        f"Matched: {result.matched_count} · Failed: {result.failed_count}"
+    )
+    recommended = [match for match in result.matches if match.result.score >= threshold]
+    if recommended:
+        table = Table("Score", "Title", "Company", "Summary", title="Recommended")
+        for match in recommended:
+            table.add_row(
+                str(match.result.score), match.job.title, match.job.company, match.result.summary
+            )
+        console.print(table)
+    if dry_run:
+        console.print("Dry run: no LLM calls.")
+    console.print(
+        f"Tokens: {result.tokens_in} input, {result.tokens_out} output. "
+        f"Cost: ${result.cost_usd:.4f}"
+    )
+    if result.cost_cap_reached:
+        console.print("[yellow]Cost cap reached: matching stopped early.[/yellow]")
 
 
 @sources_app.command("add")

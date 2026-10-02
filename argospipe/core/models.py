@@ -59,9 +59,12 @@ class RunResult(BaseModel):
     finished_at: str | None = None
     sources: list[SourceStatus] = Field(default_factory=list)
     new_count: int = 0
+    closed_count: int = 0
     discarded_count: int = 0
     missing_description_count: int = 0
     matched_count: int = 0
+    failed_count: int = 0
+    cost_cap_reached: bool = False
     matches: list[RunMatch] = Field(default_factory=list)
     discards: list[Discard] = Field(default_factory=list)
     links: list[OfferLink] = Field(default_factory=list)
