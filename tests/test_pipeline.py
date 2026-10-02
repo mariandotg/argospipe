@@ -279,3 +279,90 @@ def test_unexpected_error_waits_for_other_matches_then_fails(conn: sqlite3.Conne
 
     saved = conn.execute("SELECT COUNT(*) FROM matches").fetchone()[0]
     assert saved == 1
+
+
+class RaisingFetchSource:
+    name = "raising"
+
+    async def fetch(self) -> list[RawJob]:
+        raise ValueError("bad payload")
+
+
+class SlowSource:
+    name = "slow"
+
+    async def fetch(self) -> list[RawJob]:
+        await asyncio.sleep(5)
+        return []
+
+
+def test_stale_job_is_closed_and_not_matched(conn: sqlite3.Connection) -> None:
+    run(conn, FakeProvider(), [FakeSource(JOBS[:1])])
+    conn.execute("UPDATE jobs SET last_seen = '2026-09-01T10:00:00+00:00'")
+    conn.execute("DELETE FROM matches")
+    provider = FakeProvider()
+
+    result = run(conn, provider, [FakeSource([])])
+
+    assert result.closed_count == 1
+    assert provider.calls == []
+    assert conn.execute("SELECT status FROM jobs").fetchone()["status"] == "closed"
+    assert (
+        json.loads(conn.execute("SELECT stats FROM runs ORDER BY id DESC").fetchone()["stats"])[
+            "closed"
+        ]
+        == 1
+    )
+
+
+def test_dry_run_closes_stale_jobs(conn: sqlite3.Connection) -> None:
+    run(conn, FakeProvider(), [FakeSource(JOBS[:1])])
+    conn.execute("UPDATE jobs SET last_seen = '2026-09-01T10:00:00+00:00'")
+
+    result = run(conn, None, [FakeSource([])], dry_run=True)
+
+    assert result.closed_count == 1
+
+
+def test_closed_job_seen_again_is_reopened(conn: sqlite3.Connection) -> None:
+    run(conn, FakeProvider(), [FakeSource(JOBS[:1])])
+    conn.execute("UPDATE jobs SET status = 'closed', last_seen = '2026-09-01T10:00:00+00:00'")
+
+    run(conn, FakeProvider(), [FakeSource(JOBS[:1])])
+
+    row = conn.execute("SELECT status, last_seen FROM jobs").fetchone()
+    assert (row["status"], row["last_seen"]) == ("open", "2026-10-01T10:00:00+00:00")
+
+
+def test_source_failing_at_construction_is_isolated(
+    conn: sqlite3.Connection, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def boom(source: object) -> Source:
+        raise RuntimeError("cannot build")
+
+    monkeypatch.setattr(pipeline, "build_source", boom)
+    config = Config(sources=[FileSourceConfig(path=tmp_path / "jobs.json")])
+
+    result = asyncio.run(
+        pipeline.run(config, PROFILE, provider=FakeProvider(), conn=conn, profile_version="pv1")
+    )
+
+    assert [(s.ok, s.error) for s in result.sources] == [(False, "cannot build")]
+
+
+def test_source_raising_in_fetch_is_isolated(conn: sqlite3.Connection) -> None:
+    result = run(conn, FakeProvider(), [RaisingFetchSource(), FakeSource(JOBS)])
+
+    assert [s.ok for s in result.sources] == [False, True]
+    assert result.sources[0].error == "bad payload"
+
+
+def test_source_timeout_is_isolated(conn: sqlite3.Connection) -> None:
+    result = run(
+        conn, FakeProvider(), [SlowSource(), FakeSource(JOBS)], Config(source_timeout_s=0.01)
+    )
+
+    slow, fake = result.sources
+    assert (slow.ok, slow.error) == (False, "timed out after 0.01s")
+    assert fake.ok
+    assert result.matched_count == 2

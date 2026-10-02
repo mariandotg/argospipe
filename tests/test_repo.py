@@ -117,3 +117,13 @@ def test_open_jobs_without_match_excludes_matched_and_closed(conn: sqlite3.Conne
         "matched",
         "new",
     ]
+
+
+def test_seen_again_reopens_closed_job(conn: sqlite3.Connection) -> None:
+    upsert_job(conn, _job(), "2026-09-01")
+    assert close_stale_jobs(conn, "2026-09-20") == 1
+
+    upsert_job(conn, _job(), "2026-10-01")
+
+    row = conn.execute("SELECT status, last_seen FROM jobs").fetchone()
+    assert (row["status"], row["last_seen"]) == ("open", "2026-10-01")
