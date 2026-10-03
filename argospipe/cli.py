@@ -3,6 +3,7 @@ import re
 import sqlite3
 import webbrowser
 from datetime import UTC, datetime
+from importlib.metadata import version as package_version
 from pathlib import Path
 from typing import Annotated
 
@@ -56,6 +57,24 @@ eval_app = typer.Typer(
     invoke_without_command=True,
 )
 app.add_typer(eval_app, name="eval")
+
+
+def _print_version(value: bool) -> None:
+    if value:
+        typer.echo(f"argospipe {package_version('argospipe')}")
+        raise typer.Exit()
+
+
+@app.callback()
+def main(
+    version: Annotated[
+        bool,
+        typer.Option(
+            "--version", callback=_print_version, is_eager=True, help="Show the version and exit."
+        ),
+    ] = False,
+) -> None:
+    """Find job offers, filter them, and match them against your CV."""
 
 
 @profile_app.command("import")

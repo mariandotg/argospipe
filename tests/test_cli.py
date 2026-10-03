@@ -1,3 +1,5 @@
+from importlib.metadata import version
+
 from typer.testing import CliRunner
 
 from argospipe.cli import app
@@ -16,3 +18,9 @@ def test_profile_help_lists_import() -> None:
     result = runner.invoke(app, ["profile", "--help"])
     assert result.exit_code == 0
     assert "import" in result.output
+
+
+def test_version_prints_package_version() -> None:
+    result = runner.invoke(app, ["--version"])
+    assert result.exit_code == 0
+    assert result.output.strip() == f"argospipe {version('argospipe')}"
