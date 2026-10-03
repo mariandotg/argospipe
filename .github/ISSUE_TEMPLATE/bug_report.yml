@@ -1,0 +1,46 @@
+name: Bug report
+description: Something in argospipe fails or behaves wrong.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Never paste API keys, tokens, your CV or `profile.yaml`. Redact company-internal data.
+  - type: input
+    id: version
+    attributes:
+      label: argospipe version
+      description: Output of `uv tool list | grep argospipe`, or the git commit if you run from source.
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS and Python version
+      placeholder: macOS 15, Python 3.12
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command you ran
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected and what happened
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Error output
+      description: Full traceback or error message.
+      render: text
+  - type: dropdown
+    id: provider
+    attributes:
+      label: LLM provider
+      options: [anthropic, openai, not relevant]

@@ -21,7 +21,7 @@ Tests, lint, and typecheck must be green on every PR.
 
 - **Unit tests must not use the network.** Record HTTP responses under `tests/fixtures/` and replay them (see existing ATS tests).
 - **No scrapers for LinkedIn** or for sites whose terms forbid automated access.
-- **Never log or persist the Anthropic API key.** The CV is never stored; only the extracted profile in `profile.yaml`.
+- **Never log or persist API keys** (Anthropic or OpenAI). The CV is never stored; only the extracted profile in `profile.yaml`.
 - **Database schema changes:** add a new numbered SQL file in `argospipe/db/migrations/`. Never edit a migration that has already shipped.
 - **Data directory:** set `ARGOSPIPE_HOME` to redirect the app data dir (tests rely on this).
 

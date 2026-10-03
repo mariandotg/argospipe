@@ -1,0 +1,34 @@
+name: Source request
+description: Ask for a company, job board or ATS that argospipe does not read yet.
+labels: [source]
+body:
+  - type: input
+    id: url
+    attributes:
+      label: Careers page or job board URL
+      placeholder: https://boards.greenhouse.io/examplecorp
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What is it?
+      options:
+        - A company on Greenhouse, Lever or Ashby (add to companies.yaml)
+        - A different ATS (new adapter)
+        - A job board
+        - I do not know
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why it matters
+      description: Region, stack or roles it covers that current sources miss.
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Terms of use
+      options:
+        - label: The source has a public API or its terms allow automated access. argospipe does not scrape LinkedIn or sites that forbid it.
+          required: true
