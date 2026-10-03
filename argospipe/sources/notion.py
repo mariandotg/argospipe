@@ -1,11 +1,11 @@
 import asyncio
-import os
 from datetime import UTC, datetime
 from typing import Any
 
 import httpx
 
 from argospipe.config import NotionSourceConfig
+from argospipe.credentials import get_notion_token
 from argospipe.sources.base import RawJob
 from argospipe.sources.http import _retry_delay
 
@@ -43,14 +43,17 @@ class NotionSource:
         self.config = config
         self.name = f"notion:{config.database_id}"
         self.errors: list[str] = []
-        self._token = token if token is not None else os.environ.get("NOTION_TOKEN")
+        self._token = token if token is not None else get_notion_token()
         self._since = since
         self._transport = transport
 
     async def fetch(self) -> list[RawJob]:
         self.errors.clear()
         if not self._token:
-            raise ValueError("NOTION_TOKEN is required to fetch Notion jobs")
+            raise ValueError(
+                "NOTION_TOKEN is required to fetch Notion jobs. "
+                "Set NOTION_TOKEN or run `argospipe sources add-notion`."
+            )
 
         url = f"https://api.notion.com/v1/databases/{self.config.database_id}/query"
         headers = {

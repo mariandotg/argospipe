@@ -46,6 +46,11 @@ from argospipe.output.notion import NotionWritebackError, writeback
 from argospipe.profile_import import import_profile
 from argospipe.report.render import render
 from argospipe.sources.detect import UnsupportedURLError, detect
+from argospipe.sources.notion_setup import (
+    DuplicateNotionSourceError,
+    NotionDatabaseIdError,
+    add_notion_source,
+)
 
 app = typer.Typer(help="Find job offers, filter them, and match them against your CV.")
 profile_app = typer.Typer(help="Manage your profile.")
@@ -327,6 +332,26 @@ def sources_add(
     config.sources.append(AtsSourceConfig(ats=ats, slug=slug, name=name))
     save_config(config, path)
     typer.echo(f"Added {name or slug} ({ats}: {slug}).")
+
+
+@sources_app.command("add-notion")
+def sources_add_notion(
+    database: Annotated[str, typer.Argument(help="Notion database id or URL containing the id.")],
+) -> None:
+    """Add a Notion database as a job source."""
+    path = config_path()
+    config = load_config(path) if path.exists() else Config()
+    try:
+        database_id = add_notion_source(config, database, prompt=typer.prompt)
+    except NotionDatabaseIdError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    except DuplicateNotionSourceError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    save_config(config, path)
+    typer.echo(f"Added Notion database {database_id}.")
 
 
 @sources_app.command("list")

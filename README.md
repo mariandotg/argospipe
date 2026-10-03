@@ -37,7 +37,7 @@ argospipe run     # fetch, filter, match new offers, open the HTML report
 |------|-----|
 | **Greenhouse, Lever, Ashby** | Public job-board APIs. Add with `argospipe sources add <careers-url>` (e.g. `boards.greenhouse.io`, `jobs.lever.co`, `jobs.ashbyhq.com`). |
 | **CSV / JSON** | Add a `file` source in `config.yaml` (example below). Each row/object is a job record. **Required columns/keys:** `title`, `company`, `url`. **Optional:** `location`, `description`, `posted_at`, `source_name`, `source` (defaults to `file`), `external_id` (defaults to `url`). |
-| **Notion** | A Notion database where your bot (or you) stores offers. Property mapping and setup: [`docs/notion-schema.md`](docs/notion-schema.md). Set integration token in `NOTION_TOKEN`. |
+| **Notion** | A Notion database where your bot (or you) stores offers. Property mapping and setup: [`docs/notion-schema.md`](docs/notion-schema.md). Token via `argospipe sources add-notion` or `init` (keyring); `NOTION_TOKEN` still works and takes precedence. |
 
 A `file` source in `config.yaml`:
 

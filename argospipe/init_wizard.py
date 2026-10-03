@@ -36,6 +36,7 @@ from argospipe.llm.factory import make_provider
 from argospipe.llm.provider import LLMProvider
 from argospipe.profile_import import import_profile
 from argospipe.sources.companies import Region, companies_as_sources
+from argospipe.sources.notion_setup import prompt_and_add_notion_source
 
 MAX_API_KEY_ATTEMPTS = 3
 MAX_PROMPT_ATTEMPTS = 3
@@ -55,6 +56,7 @@ ConfirmFn = Callable[..., bool]
 ValidateApiKeyFn = Callable[[str, str], Awaitable[None]]
 RunCommandFn = Callable[..., None]
 ProviderFactory = Callable[[str], LLMProvider]
+ConfigureNotionSourceFn = Callable[["InitWizardDeps", Config], None]
 
 
 async def default_validate_api_key(key: str, model: str) -> None:
@@ -79,6 +81,7 @@ class InitWizardDeps:
     provider_factory: ProviderFactory = default_provider_factory
     run_command: RunCommandFn | None = None
     open_in_editor: Callable[[Path], None] | None = None
+    configure_notion_source: ConfigureNotionSourceFn | None = None
 
 
 def _open_profile_in_editor(path: Path) -> None:
@@ -192,6 +195,15 @@ def _confirm_overwrite(
     if not path.exists() or force:
         return True
     return confirm(f"{label} already exists at {path}. Overwrite?", default=False)
+
+
+def _maybe_configure_notion_source(wizard: InitWizardDeps, config: Config) -> None:
+    if wizard.configure_notion_source is not None:
+        wizard.configure_notion_source(wizard, config)
+        return
+    if not wizard.confirm("Do you have a Notion database with job offers?", default=False):
+        return
+    prompt_and_add_notion_source(config, wizard.prompt)
 
 
 async def _ensure_api_key(wizard: InitWizardDeps, model: str) -> None:
@@ -313,6 +325,7 @@ async def run_init_wizard(
     )
 
     merge_company_sources(config, list(regions))
+    _maybe_configure_notion_source(wizard, config)
     save_config(config)
     console.print(f"Added company sources for regions: {', '.join(regions)}")
     console.print(f"Profile saved to {profile_path()}")
