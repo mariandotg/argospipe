@@ -1,5 +1,4 @@
 import asyncio
-import os
 from typing import Any
 
 import httpx
@@ -7,6 +6,7 @@ from pydantic import BaseModel
 
 from argospipe.config import NotionSourceConfig
 from argospipe.core.models import RunResult
+from argospipe.credentials import get_notion_token
 from argospipe.sources.http import _retry_delay
 from argospipe.sources.notion import _NOTION_VERSION
 
@@ -152,9 +152,12 @@ async def writeback(
     token: str | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> WritebackReport:
-    token = token if token is not None else os.environ.get("NOTION_TOKEN")
+    token = token if token is not None else get_notion_token()
     if not token:
-        raise ValueError("NOTION_TOKEN is required to write back to Notion")
+        raise ValueError(
+            "NOTION_TOKEN is required to write back to Notion. "
+            "Set NOTION_TOKEN or run `argospipe sources add-notion`."
+        )
 
     source = f"notion:{config.database_id}"
     rows = _rows(result, threshold)

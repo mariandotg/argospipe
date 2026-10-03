@@ -85,5 +85,6 @@ sources:
       posted_at: "Found"
 ```
 
-Token de la integración en la variable de entorno `NOTION_TOKEN` (MDG-168). La integración
+Token de la integración: `argospipe sources add-notion` o `init` lo guardan en el keyring del
+sistema; la variable `NOTION_TOKEN` sigue funcionando y tiene prioridad (MDG-168). La integración
 necesita acceso de lectura y, para el writeback, de escritura sobre la base.

@@ -7,7 +7,9 @@ import httpx
 import pytest
 
 from argospipe.config import NotionFields, NotionSourceConfig
+from argospipe.credentials import save_notion_token
 from argospipe.sources.notion import NotionSource
+from tests.test_notion_credentials import MemoryKeyring
 
 FIXTURES = Path(__file__).parent / "fixtures" / "notion"
 
@@ -113,6 +115,27 @@ def test_token_comes_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     source = NotionSource(_config(), transport=httpx.MockTransport(respond))
     assert asyncio.run(source.fetch()) == []
     assert requests[0].headers["Authorization"] == "Bearer environment-token"
+
+
+def test_token_comes_from_keyring(monkeypatch: pytest.MonkeyPatch) -> None:
+    import keyring
+
+    monkeypatch.delenv("NOTION_TOKEN", raising=False)
+    previous = keyring.get_keyring()
+    keyring.set_keyring(MemoryKeyring())
+    try:
+        save_notion_token("keyring-token")
+        requests: list[httpx.Request] = []
+
+        def respond(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(200, json={"results": [], "has_more": False, "next_cursor": None})
+
+        source = NotionSource(_config(), transport=httpx.MockTransport(respond))
+        assert asyncio.run(source.fetch()) == []
+        assert requests[0].headers["Authorization"] == "Bearer keyring-token"
+    finally:
+        keyring.set_keyring(previous)
 
 
 def test_missing_token_fails_at_fetch(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -17,6 +17,7 @@ from argospipe.config import (
     CandidateProfile,
     Config,
     FileSourceConfig,
+    NotionSourceConfig,
     Preferences,
     Profile,
     load_config,
@@ -26,7 +27,14 @@ from argospipe.config import (
     save_profile,
 )
 from argospipe.core.models import JobRecord
-from argospipe.credentials import ENV_VAR, KEYRING_USERNAME, SERVICE_NAME, get_api_key, save_api_key
+from argospipe.credentials import (
+    ENV_VAR,
+    KEYRING_USERNAME,
+    NOTION_KEYRING_USERNAME,
+    SERVICE_NAME,
+    get_api_key,
+    save_api_key,
+)
 from argospipe.init_wizard import InitWizardDeps, merge_company_sources
 from argospipe.llm.provider import Usage
 from argospipe.llm.schemas import MatchResult, ProfileExtraction
@@ -82,6 +90,7 @@ def _happy_input(cv: Path, *, api_key: str = "sk-good", run_now: str = "n") -> s
             api_key,
             str(cv),
             "n",
+            "",
             "",
             "",
             "",
@@ -241,7 +250,7 @@ def test_invalid_api_key_retried_then_succeeds(
     )
     _patch_init_deps(monkeypatch, deps)
     input_lines = "\n".join(
-        ["bad-1", "bad-2", "sk-good", str(cv), "n", "", "", "", "", "", "es", "n"]
+        ["bad-1", "bad-2", "sk-good", str(cv), "n", "", "", "", "", "", "es", "", "n"]
     )
     result = runner.invoke(cli.app, ["init"], input=input_lines)
 
@@ -399,6 +408,7 @@ def test_invalid_modality_reprompts_then_succeeds(
         "",
         "",
         "",
+        "",
         "n",
     ]
     result = runner.invoke(cli.app, ["init"], input="\n".join(lines))
@@ -406,6 +416,49 @@ def test_invalid_modality_reprompts_then_succeeds(
     assert result.exit_code == 0, result.output
     assert "Unknown modalities" in result.output
     assert load_profile().preferences.modalities == ["remote"]
+
+
+def test_init_skips_notion_when_user_declines(
+    tmp_path: Path, home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cv = _cv(tmp_path)
+    deps = InitWizardDeps(
+        validate_api_key=_noop_validate,
+        provider_factory=lambda model: FakeProvider(model),
+        run_command=lambda: None,
+    )
+    _patch_init_deps(monkeypatch, deps)
+    result = runner.invoke(cli.app, ["init"], input=_happy_input(cv, api_key="sk-good"))
+
+    assert result.exit_code == 0, result.output
+    assert not any(isinstance(s, NotionSourceConfig) for s in load_config().sources)
+    assert keyring.get_password(SERVICE_NAME, NOTION_KEYRING_USERNAME) is None
+
+
+def test_init_adds_notion_source_when_confirmed(
+    tmp_path: Path, home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cv = _cv(tmp_path)
+    database_id = "6e93ce47f5bc47a0bdbdb5f135f0a980"
+    lines = _happy_input(cv, api_key="sk-good").split("\n")
+    lines[-2] = "y"
+    lines.insert(-1, database_id)
+    lines.insert(-1, "secret-notion-token")
+
+    deps = InitWizardDeps(
+        validate_api_key=_noop_validate,
+        provider_factory=lambda model: FakeProvider(model),
+        run_command=lambda: None,
+    )
+    _patch_init_deps(monkeypatch, deps)
+    result = runner.invoke(cli.app, ["init"], input="\n".join(lines))
+
+    assert result.exit_code == 0, result.output
+    notion_sources = [s for s in load_config().sources if isinstance(s, NotionSourceConfig)]
+    assert len(notion_sources) == 1
+    assert notion_sources[0].database_id == database_id
+    assert keyring.get_password(SERVICE_NAME, NOTION_KEYRING_USERNAME) == "secret-notion-token"
+    assert "secret-notion-token" not in result.output
 
 
 def test_invalid_seniority_and_region_reprompt_then_succeed(
@@ -418,7 +471,7 @@ def test_invalid_seniority_and_region_reprompt_then_succeed(
         run_command=lambda: None,
     )
     _patch_init_deps(monkeypatch, deps)
-    lines = ["sk-good", str(cv), "n", "", "", "wizard", "senior", "", "", "mars", "es", "n"]
+    lines = ["sk-good", str(cv), "n", "", "", "wizard", "senior", "", "", "mars", "es", "", "n"]
     result = runner.invoke(cli.app, ["init"], input="\n".join(lines))
 
     assert result.exit_code == 0, result.output
@@ -448,6 +501,7 @@ def test_invalid_threshold_three_times_exits(
         "abc",
         "200",
         "999",
+        "",
         "n",
     ]
     result = runner.invoke(cli.app, ["init"], input="\n".join(lines))
@@ -582,3 +636,28 @@ def test_offers_run_when_confirmed(
 
     assert result.exit_code == 0, result.output
     assert run_calls == ["ran"]
+
+
+def test_init_reprompts_after_invalid_notion_id(
+    tmp_path: Path, home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cv = _cv(tmp_path)
+    database_id = "6e93ce47f5bc47a0bdbdb5f135f0a980"
+    lines = _happy_input(cv, api_key="sk-good").split("\n")
+    lines[-2] = "y"
+    lines.insert(-1, "https://example.com/not-notion")
+    lines.insert(-1, database_id)
+    lines.insert(-1, "secret-notion-token")
+
+    deps = InitWizardDeps(
+        validate_api_key=_noop_validate,
+        provider_factory=lambda model: FakeProvider(model),
+        run_command=lambda: None,
+    )
+    _patch_init_deps(monkeypatch, deps)
+    result = runner.invoke(cli.app, ["init"], input="\n".join(lines))
+
+    assert result.exit_code == 0, result.output
+    assert "Invalid Notion database id" in result.output
+    notion_sources = [s for s in load_config().sources if isinstance(s, NotionSourceConfig)]
+    assert [s.database_id for s in notion_sources] == [database_id]
