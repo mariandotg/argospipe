@@ -10,7 +10,7 @@ body:
     id: version
     attributes:
       label: argospipe version
-      description: Output of `uv tool list | grep argospipe`, or the git commit if you run from source.
+      description: Output of `argospipe --version` (v0.2+), or `uv tool list | grep argospipe`, or the git commit if you run from source.
     validations:
       required: true
   - type: input
