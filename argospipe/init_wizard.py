@@ -31,7 +31,8 @@ from argospipe.config import (
     save_profile,
 )
 from argospipe.credentials import ENV_VAR, get_api_key, save_api_key
-from argospipe.llm.anthropic import AnthropicProvider, LLMOutputError
+from argospipe.llm.common import LLMOutputError
+from argospipe.llm.factory import make_provider
 from argospipe.llm.provider import LLMProvider
 from argospipe.profile_import import import_profile
 from argospipe.sources.companies import Region, companies_as_sources
@@ -65,12 +66,17 @@ async def default_validate_api_key(key: str, model: str) -> None:
     )
 
 
+def default_provider_factory(model: str) -> LLMProvider:
+    config = load_config() if config_path().exists() else Config()
+    return make_provider(config.model_copy(update={"model": model}))
+
+
 @dataclass
 class InitWizardDeps:
     prompt: PromptFn = typer.prompt
     confirm: ConfirmFn = typer.confirm
     validate_api_key: ValidateApiKeyFn = default_validate_api_key
-    provider_factory: ProviderFactory = AnthropicProvider
+    provider_factory: ProviderFactory = default_provider_factory
     run_command: RunCommandFn | None = None
     open_in_editor: Callable[[Path], None] | None = None
 

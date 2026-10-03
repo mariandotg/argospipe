@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from argospipe.config import Config, Profile
 from argospipe.core.fingerprint import fingerprint
 from argospipe.core.models import JobRecord
-from argospipe.llm.anthropic import LLMOutputError
+from argospipe.llm.common import LLMOutputError
 from argospipe.llm.provider import LLMProvider, Usage, cost_usd
 
 ProviderFactory = Callable[[str], LLMProvider]

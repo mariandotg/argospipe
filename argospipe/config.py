@@ -107,6 +107,7 @@ class ModelPrice(BaseModel):
 
 
 class Config(BaseModel):
+    provider: Literal["anthropic", "openai"] = "anthropic"
     model: str = "claude-haiku-4-5"
     max_matches_per_run: int = 15
     max_cost_per_run_usd: float = 1.0

@@ -111,11 +111,11 @@ def test_cli_import_and_force(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     provider = FakeProvider()
     models: list[str] = []
 
-    def fake_anthropic(model: str) -> FakeProvider:
-        models.append(model)
+    def fake_make_provider(config: Config) -> FakeProvider:
+        models.append(config.model)
         return provider
 
-    monkeypatch.setattr(cli, "AnthropicProvider", fake_anthropic)
+    monkeypatch.setattr(cli, "make_provider", fake_make_provider)
     first = runner.invoke(cli.app, ["profile", "import", str(cv)])
     output = re.sub(r"\x1b\[[0-9;]*m", "", first.output)
     assert first.exit_code == 0, first.output
@@ -145,10 +145,10 @@ def test_cli_missing_key_exits_without_provider_call(
 ) -> None:
     monkeypatch.setenv("ARGOSPIPE_HOME", str(tmp_path / "data"))
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.setattr(cli, "get_api_key", lambda: None)
+    monkeypatch.setattr(cli, "get_api_key", lambda *_: None)
     cv = _text_cv(tmp_path)
     provider = FakeProvider()
-    monkeypatch.setattr(cli, "AnthropicProvider", lambda model: provider)
+    monkeypatch.setattr(cli, "make_provider", lambda config: provider)
 
     result = runner.invoke(cli.app, ["profile", "import", str(cv)])
 

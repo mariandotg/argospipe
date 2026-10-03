@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from typing import assert_never
 
 import anthropic
+import openai
 
 from argospipe.config import (
     AtsSourceConfig,
@@ -35,7 +36,8 @@ from argospipe.db.repo import (
     start_run,
     upsert_job,
 )
-from argospipe.llm.anthropic import PROMPT_VERSION, AnthropicProvider, LLMOutputError
+from argospipe.llm.common import PROMPT_VERSION, LLMOutputError, pricing_error_message
+from argospipe.llm.factory import make_provider
 from argospipe.llm.provider import LLMProvider, Usage, cost_usd
 from argospipe.sources.ashby import AshbySource
 from argospipe.sources.base import RawJob, Source
@@ -161,7 +163,13 @@ async def _match_all(
         assert job.text_hash is not None
         async with semaphore:
             cached = get_cached_match(
-                conn, job.fingerprint, job.text_hash, profile_version, PROMPT_VERSION, config.model
+                conn,
+                job.fingerprint,
+                job.text_hash,
+                profile_version,
+                PROMPT_VERSION,
+                config.model,
+                config.provider,
             )
             if cached is not None:
                 return RunMatch(job=job, result=cached)
@@ -184,6 +192,13 @@ async def _match_all(
                     Unscored(fingerprint=job.fingerprint, kind="failed", reasons=[reason])
                 )
                 return None
+            except openai.APIError as exc:
+                result.failed_count += 1
+                reason = str(exc) or type(exc).__name__
+                result.unscored.append(
+                    Unscored(fingerprint=job.fingerprint, kind="failed", reasons=[reason])
+                )
+                return None
             spend(usage)
             save_match(
                 conn,
@@ -192,6 +207,7 @@ async def _match_all(
                 profile_version,
                 PROMPT_VERSION,
                 config.model,
+                config.provider,
                 match,
                 usage.tokens_in,
                 usage.tokens_out,
@@ -241,7 +257,9 @@ async def _execute(
         result.closed_count = close_stale_jobs(conn, before)
     conn.commit()
 
-    selected = open_jobs_without_match(conn, profile_version, PROMPT_VERSION, config.model)
+    selected = open_jobs_without_match(
+        conn, profile_version, PROMPT_VERSION, config.model, config.provider
+    )
     with_description = [job for job in selected if job.description and job.text_hash]
     missing_description = [job for job in selected if not job.description or not job.text_hash]
     result.missing_description_count = len(missing_description)
@@ -263,7 +281,7 @@ async def _execute(
     if dry_run or not top:
         return
     if provider is None:
-        provider = AnthropicProvider(config.model)
+        provider = make_provider(config)
     await _match_all(conn, top, config, profile, provider, profile_version, result, now)
 
 
@@ -295,10 +313,7 @@ async def run(
     now: str | None = None,
 ) -> RunResult:
     if not dry_run and config.model not in config.pricing:
-        raise ValueError(
-            f"No price for model {config.model} in config pricing; "
-            "the cost cap cannot be enforced without it"
-        )
+        raise ValueError(pricing_error_message(config.model))
     started_at = now or _utc_now()
     own_conn = conn is None
     db = conn if conn is not None else connect(db_path())
