@@ -54,7 +54,7 @@ def test_raw_job_accepts_optional_notion_fields() -> None:
 
 def test_raw_job_requires_shared_notion_fields() -> None:
     with pytest.raises(ValidationError):
-        RawJob(source="file", external_id="job-1")
+        RawJob.model_validate({"source": "file", "external_id": "job-1"})
 
 
 @pytest.mark.parametrize("score", [0, 100])

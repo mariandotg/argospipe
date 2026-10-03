@@ -97,7 +97,12 @@ def test_run_writes_report_and_opens_browser(home: Path, monkeypatch: pytest.Mon
     configure(home)
     monkeypatch.setattr(pipeline, "make_provider", lambda config: FakeProvider())
     opened: list[str] = []
-    monkeypatch.setattr(webbrowser, "open", lambda url: opened.append(url) or True)
+
+    def open_report(url: str) -> bool:
+        opened.append(url)
+        return True
+
+    monkeypatch.setattr(webbrowser, "open", open_report)
 
     result = runner.invoke(app, ["run"])
 

@@ -118,7 +118,9 @@ def test_match_cache_distinguishes_provider_with_same_model(conn: sqlite3.Connec
     )
 
     assert get_cached_match(conn, *anthropic_key) == _result()
-    assert get_cached_match(conn, *openai_key).score == 42
+    openai_cached = get_cached_match(conn, *openai_key)
+    assert openai_cached is not None
+    assert openai_cached.score == 42
 
 
 def test_open_jobs_without_match_excludes_matched_and_closed(conn: sqlite3.Connection) -> None:

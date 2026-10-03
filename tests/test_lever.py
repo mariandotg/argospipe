@@ -22,7 +22,8 @@ def _expected_location(categories: dict[str, object]) -> str | None:
     location = categories.get("location")
     if location:
         return str(location)
-    all_locations = categories.get("allLocations") or []
+    all_locations_raw = categories.get("allLocations")
+    all_locations: list[object] = all_locations_raw if isinstance(all_locations_raw, list) else []
     if all_locations:
         return ", ".join(str(loc) for loc in all_locations)
     return None

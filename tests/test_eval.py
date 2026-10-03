@@ -19,7 +19,7 @@ from argospipe.config import (
 from argospipe.core.models import JobRecord
 from argospipe.eval import EvalPair, EvalResult, ProviderFactory, load_pairs, run_eval
 from argospipe.llm.provider import Usage
-from argospipe.llm.schemas import MatchResult
+from argospipe.llm.schemas import MatchResult, ProfileExtraction
 
 runner = CliRunner()
 
@@ -39,7 +39,7 @@ class FakeProvider:
         result = MatchResult(score=self.scores[job.title], seniority_match="match", summary="s")
         return result, Usage(tokens_in=1000, tokens_out=100)
 
-    async def extract_profile(self, cv_text: str):  # type: ignore[no-untyped-def]
+    async def extract_profile(self, cv_text: str) -> tuple[ProfileExtraction, Usage]:
         raise NotImplementedError
 
 

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Literal
 
 import anthropic
-import httpx
+import httpx2
 import pytest
 
 from argospipe import config as config_module
@@ -250,8 +250,12 @@ class ApiErrorProvider(FakeProvider):
         self, profile: CandidateProfile, preferences: Preferences, job: JobRecord
     ) -> tuple[MatchResult, Usage]:
         if job.company == "Acme":
-            request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
-            raise anthropic.APIError("service unavailable", request, body=None)
+            request = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
+            raise anthropic.APIError(
+                "service unavailable",
+                request,
+                body=None,
+            )
         return await super().match(profile, preferences, job)
 
 
