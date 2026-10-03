@@ -7,6 +7,7 @@ import httpx2
 import keyring
 import keyring.backend
 import keyring.errors
+import openai
 import pytest
 from typer.testing import CliRunner
 
@@ -29,8 +30,8 @@ from argospipe.config import (
 from argospipe.core.models import JobRecord
 from argospipe.credentials import (
     ENV_VAR,
-    KEYRING_USERNAME,
     NOTION_KEYRING_USERNAME,
+    PROVIDER_ENV,
     SERVICE_NAME,
     get_api_key,
     save_api_key,
@@ -73,8 +74,8 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, memory_keyring: Memory
     memory_keyring.passwords.clear()
     data = tmp_path / "data"
     monkeypatch.setenv(HOME_ENV, str(data))
-    monkeypatch.setenv(ENV_VAR, "")
-    monkeypatch.delenv(ENV_VAR)
+    for env_name in PROVIDER_ENV.values():
+        monkeypatch.delenv(env_name, raising=False)
     return data
 
 
@@ -84,10 +85,18 @@ def _cv(tmp_path: Path) -> Path:
     return path
 
 
-def _happy_input(cv: Path, *, api_key: str = "sk-good", run_now: str = "n") -> str:
-    return "\n".join(
+def _happy_input(
+    cv: Path,
+    *,
+    api_key: str | None = "sk-good",
+    run_now: str = "n",
+    llm_provider: str = "",
+) -> str:
+    lines: list[str] = [llm_provider]
+    if api_key is not None:
+        lines.append(api_key)
+    lines.extend(
         [
-            api_key,
             str(cv),
             "n",
             "",
@@ -100,9 +109,10 @@ def _happy_input(cv: Path, *, api_key: str = "sk-good", run_now: str = "n") -> s
             run_now,
         ]
     )
+    return "\n".join(lines)
 
 
-async def _noop_validate(key: str, model: str) -> None:
+async def _noop_validate(key: str, model: str, provider: str) -> None:
     return None
 
 
@@ -119,6 +129,23 @@ def _auth_error() -> anthropic.AuthenticationError:
 def _connection_error() -> anthropic.APIConnectionError:
     request = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
     return anthropic.APIConnectionError(request=request)
+
+
+def _openai_auth_error() -> openai.AuthenticationError:
+    request = httpx2.Request("GET", "https://api.openai.com/v1/models/gpt-6-luna")
+    response = httpx2.Response(401, request=request)
+    return openai.AuthenticationError("invalid key", response=response, body=None)
+
+
+def _openai_connection_error() -> openai.APIConnectionError:
+    request = httpx2.Request("GET", "https://api.openai.com/v1/models/gpt-6-luna")
+    return openai.APIConnectionError(request=request)
+
+
+def _openai_model_not_found() -> openai.NotFoundError:
+    request = httpx2.Request("GET", "https://api.openai.com/v1/models/gpt-6-luna")
+    response = httpx2.Response(404, request=request)
+    return openai.NotFoundError("model not found", response=response, body=None)
 
 
 def _patch_init_deps(monkeypatch: pytest.MonkeyPatch, deps: InitWizardDeps) -> None:
@@ -187,10 +214,10 @@ class OrderTrackingProvider:
 def test_get_api_key_prefers_env_over_keyring(
     monkeypatch: pytest.MonkeyPatch, memory_keyring: MemoryKeyring
 ) -> None:
-    save_api_key("keyring-secret")
+    save_api_key("keyring-secret", "anthropic")
     monkeypatch.setenv(ENV_VAR, "env-secret")
 
-    assert get_api_key() == "env-secret"
+    assert get_api_key("anthropic") == "env-secret"
 
 
 def test_happy_path_writes_profile_config_and_keyring(
@@ -199,14 +226,15 @@ def test_happy_path_writes_profile_config_and_keyring(
     cv = _cv(tmp_path)
     run_calls: list[str] = []
 
-    async def validate(key: str, model: str) -> None:
-        assert model == "claude-haiku-4-5"
+    async def validate(key: str, model: str, provider: str) -> None:
+        assert provider == "openai"
+        assert model == "gpt-6-luna"
         if key != "sk-good":
-            raise _auth_error()
+            raise _openai_auth_error()
 
     deps = InitWizardDeps(
         validate_api_key=validate,
-        provider_factory=lambda model: FakeProvider(model),
+        provider_factory=lambda config: FakeProvider(config.model),
         run_command=lambda: run_calls.append("run"),
     )
     _patch_init_deps(monkeypatch, deps)
@@ -227,7 +255,10 @@ def test_happy_path_writes_profile_config_and_keyring(
     assert configured.issuperset({(s.ats, s.slug) for s in companies_as_sources(["latam"])})
     assert len(configured) == len(latam_names)
 
-    assert keyring.get_password(SERVICE_NAME, KEYRING_USERNAME) == "sk-good"
+    assert keyring.get_password(SERVICE_NAME, "openai") == "sk-good"
+    assert keyring.get_password(SERVICE_NAME, "anthropic") is None
+    assert load_config().provider == "openai"
+    assert load_config().model == "gpt-6-luna"
     assert "sk-good" not in result.output
     assert run_calls == []
 
@@ -238,25 +269,25 @@ def test_invalid_api_key_retried_then_succeeds(
     cv = _cv(tmp_path)
     attempts: list[str] = []
 
-    async def validate(key: str, model: str) -> None:
+    async def validate(key: str, model: str, provider: str) -> None:
         attempts.append(key)
         if key != "sk-good":
-            raise _auth_error()
+            raise _openai_auth_error()
 
     deps = InitWizardDeps(
         validate_api_key=validate,
-        provider_factory=lambda model: FakeProvider(model),
+        provider_factory=lambda config: FakeProvider(config.model),
         run_command=lambda: None,
     )
     _patch_init_deps(monkeypatch, deps)
     input_lines = "\n".join(
-        ["bad-1", "bad-2", "sk-good", str(cv), "n", "", "", "", "", "", "es", "", "n"]
+        ["", "bad-1", "bad-2", "sk-good", str(cv), "n", "", "", "", "", "", "es", "", "n"]
     )
     result = runner.invoke(cli.app, ["init"], input=input_lines)
 
     assert result.exit_code == 0, result.output
     assert attempts == ["bad-1", "bad-2", "sk-good"]
-    assert keyring.get_password(SERVICE_NAME, KEYRING_USERNAME) == "sk-good"
+    assert keyring.get_password(SERVICE_NAME, "openai") == "sk-good"
 
 
 def test_api_key_max_attempts_exits_without_saving(
@@ -264,21 +295,21 @@ def test_api_key_max_attempts_exits_without_saving(
 ) -> None:
     cv = _cv(tmp_path)
 
-    async def validate(key: str, model: str) -> None:
-        raise _auth_error()
+    async def validate(key: str, model: str, provider: str) -> None:
+        raise _openai_auth_error()
 
     deps = InitWizardDeps(
         validate_api_key=validate,
-        provider_factory=lambda model: FakeProvider(model),
+        provider_factory=lambda config: FakeProvider(config.model),
         run_command=lambda: None,
     )
     _patch_init_deps(monkeypatch, deps)
-    input_lines = "\n".join(["bad-1", "bad-2", "bad-3", str(cv)])
+    input_lines = "\n".join(["", "bad-1", "bad-2", "bad-3", str(cv)])
     result = runner.invoke(cli.app, ["init"], input=input_lines)
 
     assert result.exit_code == 1, result.output
     assert "Invalid API key after 3 attempts" in result.output
-    assert keyring.get_password(SERVICE_NAME, KEYRING_USERNAME) is None
+    assert keyring.get_password(SERVICE_NAME, "openai") is None
 
 
 def test_network_error_during_api_key_validation_exits_without_saving(
@@ -286,21 +317,21 @@ def test_network_error_during_api_key_validation_exits_without_saving(
 ) -> None:
     cv = _cv(tmp_path)
 
-    async def validate(key: str, model: str) -> None:
-        raise _connection_error()
+    async def validate(key: str, model: str, provider: str) -> None:
+        raise _openai_connection_error()
 
     deps = InitWizardDeps(
         validate_api_key=validate,
-        provider_factory=lambda model: FakeProvider(model),
+        provider_factory=lambda config: FakeProvider(config.model),
         run_command=lambda: None,
     )
     _patch_init_deps(monkeypatch, deps)
-    result = runner.invoke(cli.app, ["init"], input="\n".join(["sk-any", str(cv)]))
+    result = runner.invoke(cli.app, ["init"], input="\n".join(["", "sk-any", str(cv)]))
 
     assert result.exit_code == 1, result.output
     assert "Network error" in result.output
     assert "Invalid API key" not in result.output
-    assert keyring.get_password(SERVICE_NAME, KEYRING_USERNAME) is None
+    assert keyring.get_password(SERVICE_NAME, "openai") is None
 
 
 def test_keyring_failure_sets_env_and_continues(
@@ -308,14 +339,14 @@ def test_keyring_failure_sets_env_and_continues(
 ) -> None:
     cv = _cv(tmp_path)
 
-    def failing_save(key: str) -> None:
+    def failing_save(key: str, provider: str = "openai") -> None:
         raise keyring.errors.KeyringError("no backend")
 
     monkeypatch.setattr("argospipe.init_wizard.save_api_key", failing_save)
 
     deps = InitWizardDeps(
         validate_api_key=_noop_validate,
-        provider_factory=lambda model: FakeProvider(model),
+        provider_factory=lambda config: FakeProvider(config.model),
         run_command=lambda: None,
     )
     _patch_init_deps(monkeypatch, deps)
@@ -324,7 +355,7 @@ def test_keyring_failure_sets_env_and_continues(
     assert result.exit_code == 0, result.output
     assert "could not store" in result.output.lower()
     assert "sk-good" not in result.output
-    assert get_api_key() == "sk-good"
+    assert get_api_key("openai") == "sk-good"
     assert load_profile().profile.roles == ["Backend Engineer"]
 
 
@@ -335,12 +366,12 @@ def test_api_key_prompted_before_profile_extraction(
     provider_holder: list[OrderTrackingProvider] = []
     validation_happened = False
 
-    def factory(model: str) -> OrderTrackingProvider:
-        provider = OrderTrackingProvider(model)
+    def factory(config: Config) -> OrderTrackingProvider:
+        provider = OrderTrackingProvider(config.model)
         provider_holder.append(provider)
         return provider
 
-    async def validate(key: str, model: str) -> None:
+    async def validate(key: str, model: str, provider: str) -> None:
         nonlocal validation_happened
         validation_happened = True
         assert provider_holder == []
@@ -372,7 +403,7 @@ def test_run_now_without_injected_run_command_avoids_nested_event_loop(
 
     deps = InitWizardDeps(
         validate_api_key=_noop_validate,
-        provider_factory=lambda model: FakeProvider(model),
+        provider_factory=lambda config: FakeProvider(config.model),
         run_command=None,
     )
     _patch_init_deps(monkeypatch, deps)
@@ -393,11 +424,12 @@ def test_invalid_modality_reprompts_then_succeeds(
     cv = _cv(tmp_path)
     deps = InitWizardDeps(
         validate_api_key=_noop_validate,
-        provider_factory=lambda model: FakeProvider(model),
+        provider_factory=lambda config: FakeProvider(config.model),
         run_command=lambda: None,
     )
     _patch_init_deps(monkeypatch, deps)
     lines = [
+        "",
         "sk-good",
         str(cv),
         "n",
@@ -424,7 +456,7 @@ def test_init_skips_notion_when_user_declines(
     cv = _cv(tmp_path)
     deps = InitWizardDeps(
         validate_api_key=_noop_validate,
-        provider_factory=lambda model: FakeProvider(model),
+        provider_factory=lambda config: FakeProvider(config.model),
         run_command=lambda: None,
     )
     _patch_init_deps(monkeypatch, deps)
@@ -447,7 +479,7 @@ def test_init_adds_notion_source_when_confirmed(
 
     deps = InitWizardDeps(
         validate_api_key=_noop_validate,
-        provider_factory=lambda model: FakeProvider(model),
+        provider_factory=lambda config: FakeProvider(config.model),
         run_command=lambda: None,
     )
     _patch_init_deps(monkeypatch, deps)
@@ -467,11 +499,11 @@ def test_invalid_seniority_and_region_reprompt_then_succeed(
     cv = _cv(tmp_path)
     deps = InitWizardDeps(
         validate_api_key=_noop_validate,
-        provider_factory=lambda model: FakeProvider(model),
+        provider_factory=lambda config: FakeProvider(config.model),
         run_command=lambda: None,
     )
     _patch_init_deps(monkeypatch, deps)
-    lines = ["sk-good", str(cv), "n", "", "", "wizard", "senior", "", "", "mars", "es", "", "n"]
+    lines = ["", "sk-good", str(cv), "n", "", "", "wizard", "senior", "", "", "mars", "es", "", "n"]
     result = runner.invoke(cli.app, ["init"], input="\n".join(lines))
 
     assert result.exit_code == 0, result.output
@@ -486,11 +518,12 @@ def test_invalid_threshold_three_times_exits(
     cv = _cv(tmp_path)
     deps = InitWizardDeps(
         validate_api_key=_noop_validate,
-        provider_factory=lambda model: FakeProvider(model),
+        provider_factory=lambda config: FakeProvider(config.model),
         run_command=lambda: None,
     )
     _patch_init_deps(monkeypatch, deps)
     lines = [
+        "",
         "sk-good",
         str(cv),
         "n",
@@ -535,7 +568,7 @@ def test_force_skips_overwrite_confirmation(
     save_config(Config())
 
     deps = InitWizardDeps(
-        provider_factory=lambda model: FakeProvider(model),
+        provider_factory=lambda config: FakeProvider(config.model),
         validate_api_key=_noop_validate,
         run_command=lambda: None,
     )
@@ -560,7 +593,7 @@ def test_force_overwrites_existing_config_yaml(
     save_config(config)
 
     deps = InitWizardDeps(
-        provider_factory=lambda model: FakeProvider(model),
+        provider_factory=lambda config: FakeProvider(config.model),
         validate_api_key=_noop_validate,
         run_command=lambda: None,
     )
@@ -586,7 +619,7 @@ def test_init_keeps_existing_sources_in_config(
     save_config(config)
 
     deps = InitWizardDeps(
-        provider_factory=lambda model: FakeProvider(model),
+        provider_factory=lambda config: FakeProvider(config.model),
         validate_api_key=_noop_validate,
         run_command=lambda: None,
     )
@@ -622,7 +655,7 @@ def test_offers_run_when_confirmed(
     run_calls: list[str] = []
 
     deps = InitWizardDeps(
-        provider_factory=lambda model: FakeProvider(model),
+        provider_factory=lambda config: FakeProvider(config.model),
         validate_api_key=_noop_validate,
         run_command=lambda: run_calls.append("ran"),
     )
@@ -651,7 +684,7 @@ def test_init_reprompts_after_invalid_notion_id(
 
     deps = InitWizardDeps(
         validate_api_key=_noop_validate,
-        provider_factory=lambda model: FakeProvider(model),
+        provider_factory=lambda config: FakeProvider(config.model),
         run_command=lambda: None,
     )
     _patch_init_deps(monkeypatch, deps)
@@ -661,3 +694,175 @@ def test_init_reprompts_after_invalid_notion_id(
     assert "Invalid Notion database id" in result.output
     notion_sources = [s for s in load_config().sources if isinstance(s, NotionSourceConfig)]
     assert [s.database_id for s in notion_sources] == [database_id]
+
+
+def test_init_anthropic_choice_sets_model_and_saves_anthropic_key(
+    tmp_path: Path, home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cv = _cv(tmp_path)
+
+    async def validate(key: str, model: str, provider: str) -> None:
+        assert provider == "anthropic"
+        assert model == "claude-haiku-4-5"
+        if key != "sk-anthropic":
+            raise _auth_error()
+
+    deps = InitWizardDeps(
+        validate_api_key=validate,
+        provider_factory=lambda config: FakeProvider(config.model),
+        run_command=lambda: None,
+    )
+    _patch_init_deps(monkeypatch, deps)
+    result = runner.invoke(
+        cli.app,
+        ["init"],
+        input=_happy_input(cv, api_key="sk-anthropic", llm_provider="anthropic"),
+    )
+
+    assert result.exit_code == 0, result.output
+    assert load_config().provider == "anthropic"
+    assert load_config().model == "claude-haiku-4-5"
+    assert keyring.get_password(SERVICE_NAME, "anthropic") == "sk-anthropic"
+    assert keyring.get_password(SERVICE_NAME, "openai") is None
+
+
+def test_init_skips_api_key_prompt_when_provider_key_exists(
+    tmp_path: Path, home: Path, monkeypatch: pytest.MonkeyPatch, memory_keyring: MemoryKeyring
+) -> None:
+    cv = _cv(tmp_path)
+    save_api_key("existing-openai", "openai")
+    validated = False
+
+    async def validate(key: str, model: str, provider: str) -> None:
+        nonlocal validated
+        validated = True
+
+    deps = InitWizardDeps(
+        validate_api_key=validate,
+        provider_factory=lambda config: FakeProvider(config.model),
+        run_command=lambda: None,
+    )
+    _patch_init_deps(monkeypatch, deps)
+    result = runner.invoke(
+        cli.app,
+        ["init"],
+        input=_happy_input(cv, api_key=None),
+    )
+
+    assert result.exit_code == 0, result.output
+    assert validated is False
+    assert "OpenAI API key" not in result.output
+    assert keyring.get_password(SERVICE_NAME, "openai") == "existing-openai"
+
+
+def test_model_not_found_exits_without_retry(
+    tmp_path: Path, home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cv = _cv(tmp_path)
+    calls: list[str] = []
+
+    async def validate(key: str, model: str, provider: str) -> None:
+        calls.append(key)
+        raise _openai_model_not_found()
+
+    deps = InitWizardDeps(
+        validate_api_key=validate,
+        provider_factory=lambda config: FakeProvider(config.model),
+        run_command=lambda: None,
+    )
+    _patch_init_deps(monkeypatch, deps)
+    result = runner.invoke(cli.app, ["init"], input="\n".join(["", "sk-any", str(cv)]))
+
+    assert result.exit_code == 1, result.output
+    assert "Model gpt-6-luna is not available" in result.output
+    assert "Invalid API key" not in result.output
+    assert calls == ["sk-any"]
+
+
+def test_init_openai_choice_replaces_legacy_claude_model(
+    tmp_path: Path, home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    save_config(Config(provider="anthropic", model="claude-haiku-4-5"))
+    cv = _cv(tmp_path)
+    deps = InitWizardDeps(
+        validate_api_key=_noop_validate,
+        provider_factory=lambda config: FakeProvider(config.model),
+        run_command=lambda: None,
+    )
+    _patch_init_deps(monkeypatch, deps)
+    result = runner.invoke(
+        cli.app, ["init", "--force"], input=_happy_input(cv, llm_provider="openai")
+    )
+
+    assert result.exit_code == 0, result.output
+    config = load_config()
+    assert config.provider == "openai"
+    assert config.model == "gpt-6-luna"
+
+
+def test_anthropic_invalid_key_retries_then_exits(
+    tmp_path: Path, home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cv = _cv(tmp_path)
+
+    async def validate(key: str, model: str, provider: str) -> None:
+        assert provider == "anthropic"
+        raise _auth_error()
+
+    deps = InitWizardDeps(
+        validate_api_key=validate,
+        provider_factory=lambda config: FakeProvider(config.model),
+        run_command=lambda: None,
+    )
+    _patch_init_deps(monkeypatch, deps)
+    input_lines = "\n".join(["anthropic", "bad-1", "bad-2", "bad-3", str(cv)])
+    result = runner.invoke(cli.app, ["init"], input=input_lines)
+
+    assert result.exit_code == 1, result.output
+    assert "Invalid API key after 3 attempts" in result.output
+    assert keyring.get_password(SERVICE_NAME, "anthropic") is None
+
+
+def test_anthropic_network_error_exits_without_saving(
+    tmp_path: Path, home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cv = _cv(tmp_path)
+
+    async def validate(key: str, model: str, provider: str) -> None:
+        raise _connection_error()
+
+    deps = InitWizardDeps(
+        validate_api_key=validate,
+        provider_factory=lambda config: FakeProvider(config.model),
+        run_command=lambda: None,
+    )
+    _patch_init_deps(monkeypatch, deps)
+    result = runner.invoke(cli.app, ["init"], input="\n".join(["anthropic", "sk-any", str(cv)]))
+
+    assert result.exit_code == 1, result.output
+    assert "Network error" in result.output
+    assert keyring.get_password(SERVICE_NAME, "anthropic") is None
+
+
+def test_api_error_message_never_echoes_the_key(
+    tmp_path: Path, home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cv = _cv(tmp_path)
+    secret = "sk-secret-value-123"
+
+    async def validate(key: str, model: str, provider: str) -> None:
+        request = httpx2.Request("GET", "https://api.openai.com/v1/models/gpt-6-luna")
+        response = httpx2.Response(500, request=request)
+        raise openai.InternalServerError(f"boom for key {key}", response=response, body=None)
+
+    deps = InitWizardDeps(
+        validate_api_key=validate,
+        provider_factory=lambda config: FakeProvider(config.model),
+        run_command=lambda: None,
+    )
+    _patch_init_deps(monkeypatch, deps)
+    result = runner.invoke(cli.app, ["init"], input="\n".join(["", secret, str(cv)]))
+
+    assert result.exit_code == 1, result.output
+    assert "API error validating key: InternalServerError (HTTP 500)" in result.output
+    assert secret not in result.output

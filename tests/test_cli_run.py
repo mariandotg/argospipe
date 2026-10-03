@@ -20,7 +20,7 @@ runner = CliRunner()
 @pytest.fixture
 def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv(config.HOME_ENV, str(tmp_path))
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     return tmp_path
 
 
@@ -78,7 +78,7 @@ def test_run_prints_summary(home: Path, monkeypatch: pytest.MonkeyPatch) -> None
 
 def test_dry_run_needs_no_api_key(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     configure(home)
-    monkeypatch.delenv("ANTHROPIC_API_KEY")
+    monkeypatch.delenv("OPENAI_API_KEY")
 
     def no_provider(config: Config) -> None:
         raise AssertionError("dry run must not build a provider")
@@ -175,7 +175,7 @@ def test_notion_writeback_only_with_flag_and_sources(
 
 def test_notion_writeback_skipped_on_dry_run(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     configure(home)
-    monkeypatch.delenv("ANTHROPIC_API_KEY")
+    monkeypatch.delenv("OPENAI_API_KEY")
     notion = NotionSourceConfig(
         database_id="db-dry",
         fields=NotionFields(

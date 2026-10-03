@@ -11,8 +11,10 @@ from typing import Annotated
 
 import anthropic
 import keyring.errors
+import openai
 import typer
 from anthropic import AsyncAnthropic
+from openai import AsyncOpenAI
 from rich.console import Console
 from rich.table import Table
 
@@ -30,7 +32,7 @@ from argospipe.config import (
     save_config,
     save_profile,
 )
-from argospipe.credentials import ENV_VAR, get_api_key, save_api_key
+from argospipe.credentials import PROVIDER_ENV, ProviderName, get_api_key, save_api_key
 from argospipe.llm.common import LLMOutputError
 from argospipe.llm.factory import make_provider
 from argospipe.llm.provider import LLMProvider
@@ -53,24 +55,29 @@ SENIORITY_CHOICES: tuple[Seniority, ...] = (
 
 PromptFn = Callable[..., str]
 ConfirmFn = Callable[..., bool]
-ValidateApiKeyFn = Callable[[str, str], Awaitable[None]]
+ValidateApiKeyFn = Callable[[str, str, ProviderName], Awaitable[None]]
 RunCommandFn = Callable[..., None]
-ProviderFactory = Callable[[str], LLMProvider]
+ProviderFactory = Callable[[Config], LLMProvider]
 ConfigureNotionSourceFn = Callable[["InitWizardDeps", Config], None]
 
-
-async def default_validate_api_key(key: str, model: str) -> None:
-    client = AsyncAnthropic(api_key=key)
-    await client.messages.create(
-        model=model,
-        max_tokens=1,
-        messages=[{"role": "user", "content": "ping"}],
-    )
+ANTHROPIC_DEFAULT_MODEL = "claude-haiku-4-5"
 
 
-def default_provider_factory(model: str) -> LLMProvider:
-    config = load_config() if config_path().exists() else Config()
-    return make_provider(config.model_copy(update={"model": model}))
+async def default_validate_api_key(key: str, model: str, provider: ProviderName) -> None:
+    if provider == "anthropic":
+        anthropic_client = AsyncAnthropic(api_key=key)
+        await anthropic_client.messages.create(
+            model=model,
+            max_tokens=1,
+            messages=[{"role": "user", "content": "ping"}],
+        )
+        return
+    openai_client = AsyncOpenAI(api_key=key)
+    await openai_client.models.retrieve(model)
+
+
+def default_provider_factory(config: Config) -> LLMProvider:
+    return make_provider(config)
 
 
 @dataclass
@@ -134,9 +141,56 @@ def _parse_threshold(value: str) -> int:
 
 
 def _is_invalid_api_key(exc: BaseException) -> bool:
-    return isinstance(exc, (anthropic.AuthenticationError, anthropic.PermissionDeniedError)) or (
-        isinstance(exc, anthropic.APIStatusError) and 400 <= exc.status_code < 500
+    if isinstance(exc, (anthropic.AuthenticationError, anthropic.PermissionDeniedError)):
+        return True
+    if isinstance(exc, anthropic.APIStatusError) and 400 <= exc.status_code < 500:
+        return True
+    if isinstance(exc, (openai.AuthenticationError, openai.PermissionDeniedError)):
+        return True
+    return isinstance(exc, openai.APIStatusError) and 400 <= exc.status_code < 500
+
+
+def _describe_api_error(exc: BaseException) -> str:
+    status = getattr(exc, "status_code", None)
+    return f"{type(exc).__name__} (HTTP {status})" if status else type(exc).__name__
+
+
+def _is_network_error(exc: BaseException) -> bool:
+    return isinstance(
+        exc,
+        (
+            anthropic.APIConnectionError,
+            anthropic.APITimeoutError,
+            openai.APIConnectionError,
+            openai.APITimeoutError,
+        ),
     )
+
+
+def _parse_llm_provider(value: str) -> ProviderName:
+    cleaned = value.strip().lower()
+    if cleaned in ("", "openai"):
+        return "openai"
+    if cleaned == "anthropic":
+        return "anthropic"
+    raise ValueError("Choose openai or anthropic.")
+
+
+def _prompt_llm_provider(wizard: InitWizardDeps) -> ProviderName:
+    return _prompt_parsed(
+        wizard,
+        "LLM provider (openai, anthropic)",
+        _parse_llm_provider,
+        default="openai",
+    )
+
+
+def _apply_provider_choice(config: Config, provider: ProviderName) -> Config:
+    if provider == "anthropic":
+        return config.model_copy(update={"provider": provider, "model": ANTHROPIC_DEFAULT_MODEL})
+    if config.model.startswith("claude-"):
+        return config.model_copy(update={"provider": provider, "model": Config().model})
+    return config.model_copy(update={"provider": provider})
 
 
 def _prompt_parsed[T](
@@ -206,40 +260,49 @@ def _maybe_configure_notion_source(wizard: InitWizardDeps, config: Config) -> No
     prompt_and_add_notion_source(config, wizard.prompt)
 
 
-async def _ensure_api_key(wizard: InitWizardDeps, model: str) -> None:
-    if get_api_key() is not None:
+async def _ensure_api_key(wizard: InitWizardDeps, model: str, provider: ProviderName) -> None:
+    if get_api_key(provider) is not None:
         return
+    prompt_label = "OpenAI API key" if provider == "openai" else "Anthropic API key"
+    env_var = PROVIDER_ENV[provider]
     for attempt in range(1, MAX_API_KEY_ATTEMPTS + 1):
         key = wizard.prompt(
-            "Anthropic API key",
+            prompt_label,
             hide_input=True,
         )
         try:
-            await wizard.validate_api_key(key, model)
-        except (anthropic.APIConnectionError, anthropic.APITimeoutError) as exc:
-            typer.echo(
-                "Network error validating API key. Check your connection and try again.",
-                err=True,
-            )
-            raise typer.Exit(1) from exc
-        except anthropic.APIError as exc:
+            await wizard.validate_api_key(key, model, provider)
+        except (anthropic.APIError, openai.APIError) as exc:
+            if _is_network_error(exc):
+                typer.echo(
+                    "Network error validating API key. Check your connection and try again.",
+                    err=True,
+                )
+                raise typer.Exit(1) from exc
+            if isinstance(exc, (anthropic.NotFoundError, openai.NotFoundError)):
+                typer.echo(
+                    f"Model {model} is not available for this {provider} key. "
+                    "Set another model in config.yaml.",
+                    err=True,
+                )
+                raise typer.Exit(1) from exc
             if _is_invalid_api_key(exc):
                 if attempt >= MAX_API_KEY_ATTEMPTS:
                     typer.echo(f"Invalid API key after {MAX_API_KEY_ATTEMPTS} attempts.", err=True)
                     raise typer.Exit(1) from None
                 typer.echo("Invalid API key. Try again.", err=True)
                 continue
-            typer.echo(f"API error validating key: {exc}", err=True)
+            typer.echo(f"API error validating key: {_describe_api_error(exc)}", err=True)
             raise typer.Exit(1) from exc
         try:
-            save_api_key(key)
+            save_api_key(key, provider)
         except keyring.errors.KeyringError:
             typer.echo(
                 "Warning: could not store the API key in the system keyring. "
-                f"Set {ENV_VAR} in your environment for future runs.",
+                f"Set {env_var} in your environment for future runs.",
                 err=True,
             )
-            os.environ[ENV_VAR] = key
+            os.environ[env_var] = key
         break
 
 
@@ -256,11 +319,13 @@ async def run_init_wizard(
         raise typer.Exit(0)
 
     config = load_config() if config_path().exists() else Config()
-    await _ensure_api_key(wizard, config.model)
+    llm_provider = _prompt_llm_provider(wizard)
+    config = _apply_provider_choice(config, llm_provider)
+    await _ensure_api_key(wizard, config.model, config.provider)
 
     cv_input = wizard.prompt("Path to your CV (PDF or text)")
     cv_path = Path(cv_input).expanduser()
-    provider = wizard.provider_factory(config.model)
+    provider = wizard.provider_factory(config)
 
     try:
         profile = await import_profile(
@@ -344,7 +409,10 @@ def init_command(
         run_after = asyncio.run(run_init_wizard(force=force, deps=wizard))
     except typer.Exit:
         raise
-    except (anthropic.APIError, OSError) as exc:
+    except (anthropic.APIError, openai.APIError) as exc:
+        typer.echo(f"Init failed: {_describe_api_error(exc)}", err=True)
+        raise typer.Exit(1) from exc
+    except OSError as exc:
         typer.echo(f"Init failed: {exc}", err=True)
         raise typer.Exit(1) from exc
 

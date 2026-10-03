@@ -127,7 +127,7 @@ def write_pairs(path: Path) -> None:
 
 def test_cli_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ARGOSPIPE_HOME", str(tmp_path))
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     pairs = tmp_path / "pairs.yaml"
     write_pairs(pairs)
     save_profile(Profile())
@@ -147,7 +147,7 @@ def test_cli_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_cli_table(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ARGOSPIPE_HOME", str(tmp_path))
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     pairs = tmp_path / "pairs.yaml"
     write_pairs(pairs)
     save_config(
@@ -201,7 +201,7 @@ def test_cli_malformed_pairs_yaml_fails_cleanly(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("ARGOSPIPE_HOME", str(tmp_path))
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     pairs = tmp_path / "pairs.yaml"
     pairs.write_text("pairs: [unclosed", encoding="utf-8")
     result = runner.invoke(app, ["eval", "--pairs", str(pairs), "--model", "x"])

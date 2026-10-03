@@ -124,10 +124,10 @@ class FakeOpenAIClient:
         self.chat = FakeOpenAIChat(outputs)
 
 
-def test_make_provider_selects_anthropic_by_default() -> None:
+def test_make_provider_selects_openai_by_default() -> None:
     config = Config()
     provider = make_provider(config)
-    assert isinstance(provider, AnthropicProvider)
+    assert isinstance(provider, OpenAIProvider)
 
 
 def test_make_provider_selects_openai() -> None:
