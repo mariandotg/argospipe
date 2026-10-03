@@ -25,6 +25,7 @@ from argospipe.config import (
     NotionSourceConfig,
     config_path,
     data_dir,
+    db_path,
     load_config,
     load_profile,
     profile_path,
@@ -33,7 +34,9 @@ from argospipe.config import (
 )
 from argospipe.core.models import RunResult
 from argospipe.credentials import PROVIDER_ENV, get_api_key
+from argospipe.db import connect
 from argospipe.eval import EvalResult, load_pairs, run_eval
+from argospipe.eval_sample import eval_threshold_from_profile, sample_pairs_to_file
 from argospipe.init_wizard import init_command
 from argospipe.llm.common import LLMOutputError, require_model_pricing
 from argospipe.llm.factory import make_provider
@@ -48,6 +51,11 @@ profile_app = typer.Typer(help="Manage your profile.")
 sources_app = typer.Typer(help="Manage job sources.")
 app.add_typer(profile_app, name="profile")
 app.add_typer(sources_app, name="sources")
+eval_app = typer.Typer(
+    help="Compare models against your own scores: agreement and cost.",
+    invoke_without_command=True,
+)
+app.add_typer(eval_app, name="eval")
 
 
 @profile_app.command("import")
@@ -323,11 +331,13 @@ def sources_list() -> None:
     Console().print(table)
 
 
-@app.command("eval")
+@eval_app.callback()
 def eval_command(
+    ctx: typer.Context,
     model: Annotated[
-        list[str], typer.Option("--model", help="Anthropic model to evaluate. Repeatable.")
-    ],
+        list[str] | None,
+        typer.Option("--model", help="Anthropic model to evaluate. Repeatable."),
+    ] = None,
     pairs: Annotated[Path, typer.Option("--pairs", help="Pairs file.")] = Path("eval/pairs.yaml"),
     json_output: Annotated[bool, typer.Option("--json", help="Print the result as JSON.")] = False,
     threshold: Annotated[
@@ -335,6 +345,12 @@ def eval_command(
     ] = None,
 ) -> None:
     """Compare models against your own scores: agreement and cost."""
+    if ctx.invoked_subcommand is not None:
+        return
+    models = model or []
+    if not models:
+        typer.echo("Pass at least one --model, or run `argospipe eval sample`.", err=True)
+        raise typer.Exit(1)
     if not pairs.exists():
         typer.echo(
             f"Pairs file not found: {pairs}. Copy eval/pairs.example.yaml to {pairs} and edit it.",
@@ -354,7 +370,7 @@ def eval_command(
         loaded = load_pairs(pairs)
         config = load_config() if config_path().exists() else Config()
         default_profile = load_profile() if profile_path().exists() else None
-        for model_name in model:
+        for model_name in models:
             require_model_pricing(model_name, config.pricing)
     except (OSError, ValueError, yaml.YAMLError) as exc:
         typer.echo(f"Eval failed: {exc}", err=True)
@@ -369,7 +385,7 @@ def eval_command(
     result = asyncio.run(
         run_eval(
             loaded,
-            model,
+            models,
             eval_provider_factory,
             config,
             default_profile,
@@ -381,6 +397,47 @@ def eval_command(
         typer.echo(result.model_dump_json(indent=2))
     else:
         _print_eval(result)
+
+
+@eval_app.command("sample")
+def eval_sample_command(
+    n: Annotated[int, typer.Option("--n", help="Number of pairs to sample.")] = 40,
+    out: Annotated[Path, typer.Option("--out", help="Output pairs file.")] = Path(
+        "eval/pairs.yaml"
+    ),
+    force: Annotated[
+        bool, typer.Option("--force", help="Overwrite an existing pairs file.")
+    ] = False,
+    seed: Annotated[int | None, typer.Option("--seed", help="Random seed for sampling.")] = None,
+) -> None:
+    """Sample offers from your local database into an eval pairs file."""
+    db_file = db_path()
+    if not db_file.exists():
+        typer.echo(
+            f"Database not found: {db_file}. Run `argospipe run` to populate it.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    default_profile = load_profile() if profile_path().exists() else None
+    threshold = eval_threshold_from_profile(
+        default_profile.preferences.threshold if default_profile else None
+    )
+
+    conn = connect(db_file)
+    try:
+        try:
+            count = sample_pairs_to_file(conn, out, n, threshold, seed, force)
+        except FileExistsError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(1) from exc
+        except ValueError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(1) from exc
+    finally:
+        conn.close()
+
+    typer.echo(f"Wrote {count} pairs to {out}.")
 
 
 def _print_eval(result: EvalResult) -> None:

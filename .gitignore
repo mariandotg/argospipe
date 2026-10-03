@@ -10,6 +10,7 @@ build/
 .env
 *.db
 profile.yaml
+eval/pairs.yaml
 reports/
 .DS_Store
 .claude/worktrees/
