@@ -13,12 +13,16 @@ from argospipe.sources.http import SourceHTTPClient, SourceNotFoundError
 FIXTURES = Path(__file__).parent / "fixtures" / "ats" / "ashby"
 
 
-def _expected_location(job: dict) -> str:
+def _expected_location(job: dict[str, object]) -> str:
     parts: list[str] = []
     primary = job.get("location")
     if isinstance(primary, str) and primary.strip():
         parts.append(primary.strip())
-    for entry in job.get("secondaryLocations") or []:
+    secondary_raw = job.get("secondaryLocations")
+    secondary = secondary_raw if isinstance(secondary_raw, list) else []
+    for entry in secondary:
+        if not isinstance(entry, dict):
+            continue
         loc = entry.get("location")
         if isinstance(loc, str) and loc.strip():
             parts.append(loc.strip())

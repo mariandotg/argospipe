@@ -13,18 +13,20 @@ FIXTURES = Path(__file__).parent / "fixtures" / "notion"
 
 
 def _config(*, skip_statuses: list[str] | None = None) -> NotionSourceConfig:
-    values = {} if skip_statuses is None else {"skip_statuses": skip_statuses}
+    fields = NotionFields(
+        title="Name",
+        company="Company",
+        url="Link",
+        description="Description",
+        location="Geo",
+        posted_at="Found",
+    )
+    if skip_statuses is None:
+        return NotionSourceConfig(database_id="database-123", fields=fields)
     return NotionSourceConfig(
         database_id="database-123",
-        fields=NotionFields(
-            title="Name",
-            company="Company",
-            url="Link",
-            description="Description",
-            location="Geo",
-            posted_at="Found",
-        ),
-        **values,
+        fields=fields,
+        skip_statuses=skip_statuses,
     )
 
 

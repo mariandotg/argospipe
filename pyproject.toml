@@ -45,7 +45,7 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-packages = ["argospipe"]
+packages = ["argospipe", "tests"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

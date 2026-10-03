@@ -8,20 +8,20 @@ from argospipe.llm.schemas import FitReason, MatchResult
 from argospipe.report.render import render
 
 
-def _job(title: str, **kwargs: object) -> JobRecord:
-    defaults = {
-        "fingerprint": f"fp-{title}",
-        "company": "Acme",
-        "first_seen": "2026-10-01",
-        "last_seen": "2026-10-01",
-    }
-    defaults.update(kwargs)
-    return JobRecord(title=title, **defaults)  # type: ignore[arg-type]
+def _job(title: str, url: str | None = None) -> JobRecord:
+    return JobRecord(
+        title=title,
+        fingerprint=f"fp-{title}",
+        company="Acme",
+        first_seen="2026-10-01",
+        last_seen="2026-10-01",
+        url=url,
+    )
 
 
-def _match(title: str, score: int, **job_kwargs: object) -> RunMatch:
+def _match(title: str, score: int, url: str | None = None) -> RunMatch:
     return RunMatch(
-        job=_job(title, **job_kwargs),
+        job=_job(title, url),
         result=MatchResult(
             score=score,
             seniority_match="match",

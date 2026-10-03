@@ -3,7 +3,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import anthropic
-import httpx
+import httpx2
 import keyring
 import keyring.backend
 import keyring.errors
@@ -14,8 +14,10 @@ from argospipe import cli
 from argospipe.config import (
     HOME_ENV,
     AtsSourceConfig,
+    CandidateProfile,
     Config,
     FileSourceConfig,
+    Preferences,
     Profile,
     load_config,
     load_profile,
@@ -23,10 +25,11 @@ from argospipe.config import (
     save_config,
     save_profile,
 )
+from argospipe.core.models import JobRecord
 from argospipe.credentials import ENV_VAR, KEYRING_USERNAME, SERVICE_NAME, get_api_key, save_api_key
 from argospipe.init_wizard import InitWizardDeps, merge_company_sources
 from argospipe.llm.provider import Usage
-from argospipe.llm.schemas import ProfileExtraction
+from argospipe.llm.schemas import MatchResult, ProfileExtraction
 from argospipe.sources.companies import companies_as_sources
 
 runner = CliRunner()
@@ -95,13 +98,17 @@ async def _noop_validate(key: str, model: str) -> None:
 
 
 def _auth_error() -> anthropic.AuthenticationError:
-    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
-    response = httpx.Response(401, request=request)
-    return anthropic.AuthenticationError("invalid key", response=response, body=None)
+    request = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
+    response = httpx2.Response(401, request=request)
+    return anthropic.AuthenticationError(
+        "invalid key",
+        response=response,
+        body=None,
+    )
 
 
 def _connection_error() -> anthropic.APIConnectionError:
-    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    request = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
     return anthropic.APIConnectionError(request=request)
 
 
@@ -131,6 +138,14 @@ class FakeProvider:
             Usage(tokens_in=50, tokens_out=10),
         )
 
+    async def match(
+        self,
+        profile: CandidateProfile,
+        preferences: Preferences,
+        job: JobRecord,
+    ) -> tuple[MatchResult, Usage]:
+        raise AssertionError("not used in init tests")
+
 
 class OrderTrackingProvider:
     def __init__(self, model: str) -> None:
@@ -150,6 +165,14 @@ class OrderTrackingProvider:
             ),
             Usage(tokens_in=1, tokens_out=1),
         )
+
+    async def match(
+        self,
+        profile: CandidateProfile,
+        preferences: Preferences,
+        job: JobRecord,
+    ) -> tuple[MatchResult, Usage]:
+        raise AssertionError("not used in init tests")
 
 
 def test_get_api_key_prefers_env_over_keyring(
