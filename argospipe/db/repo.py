@@ -1,8 +1,19 @@
 import json
 import sqlite3
+from dataclasses import dataclass
 
 from argospipe.core.models import JobRecord
 from argospipe.llm.schemas import MatchResult
+
+
+@dataclass(frozen=True)
+class EvalSampleJob:
+    fingerprint: str
+    title: str
+    company: str
+    location: str | None
+    description: str | None
+    score: int | None
 
 
 def upsert_job(conn: sqlite3.Connection, job: JobRecord, now: str) -> None:
@@ -200,3 +211,72 @@ def close_stale_jobs(conn: sqlite3.Connection, before: str) -> int:
 def job_exists(conn: sqlite3.Connection, fingerprint: str) -> bool:
     row = conn.execute("SELECT 1 FROM jobs WHERE fingerprint = ?", (fingerprint,)).fetchone()
     return row is not None
+
+
+def count_jobs(conn: sqlite3.Connection) -> int:
+    row = conn.execute("SELECT COUNT(*) AS n FROM jobs").fetchone()
+    return int(row["n"])
+
+
+def _row_to_eval_sample(row: sqlite3.Row, score: int | None) -> EvalSampleJob:
+    return EvalSampleJob(
+        fingerprint=row["fingerprint"],
+        title=row["title"],
+        company=row["company"],
+        location=row["location"],
+        description=row["description"],
+        score=score,
+    )
+
+
+def list_latest_matched_jobs(conn: sqlite3.Connection) -> list[EvalSampleJob]:
+    rows = conn.execute(
+        """
+        SELECT fingerprint, score, title, company, location, description
+        FROM (
+            SELECT
+                m.fingerprint,
+                m.score,
+                j.title,
+                j.company,
+                j.location,
+                j.description,
+                ROW_NUMBER() OVER (
+                    PARTITION BY m.fingerprint
+                    ORDER BY m.created_at DESC, m.rowid DESC
+                ) AS rn
+            FROM matches m
+            JOIN jobs j ON j.fingerprint = m.fingerprint
+        )
+        WHERE rn = 1
+        ORDER BY fingerprint
+        """
+    ).fetchall()
+    return [_row_to_eval_sample(row, int(row["score"])) for row in rows]
+
+
+def list_prefiltered_jobs(conn: sqlite3.Connection, exclude: set[str]) -> list[EvalSampleJob]:
+    if exclude:
+        placeholders = ",".join("?" for _ in exclude)
+        query = f"""
+            SELECT DISTINCT j.fingerprint, j.title, j.company, j.location, j.description
+            FROM run_jobs rj
+            JOIN jobs j ON j.fingerprint = rj.fingerprint
+            WHERE rj.stage = 'prefiltered_out'
+                AND TRIM(COALESCE(j.description, '')) != ''
+                AND j.fingerprint NOT IN ({placeholders})
+            ORDER BY j.fingerprint
+        """
+        rows = conn.execute(query, tuple(exclude)).fetchall()
+    else:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT j.fingerprint, j.title, j.company, j.location, j.description
+            FROM run_jobs rj
+            JOIN jobs j ON j.fingerprint = rj.fingerprint
+            WHERE rj.stage = 'prefiltered_out'
+                AND TRIM(COALESCE(j.description, '')) != ''
+            ORDER BY j.fingerprint
+            """
+        ).fetchall()
+    return [_row_to_eval_sample(row, None) for row in rows]

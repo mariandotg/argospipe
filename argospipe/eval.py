@@ -61,6 +61,13 @@ class EvalResult(BaseModel):
 
 def load_pairs(path: Path) -> list[EvalPair]:
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    pairs_raw = data.get("pairs", []) if isinstance(data, dict) else []
+    if isinstance(pairs_raw, list):
+        missing = sum(
+            1 for pair in pairs_raw if isinstance(pair, dict) and pair.get("human_score") is None
+        )
+        if missing:
+            raise ValueError(f"{missing} pairs have no human_score yet: fill them in {path}")
     return PairsFile.model_validate(data).pairs
 
 
