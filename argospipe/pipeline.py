@@ -3,6 +3,7 @@ import sqlite3
 from collections import Counter
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
+from typing import assert_never
 
 import anthropic
 
@@ -36,9 +37,11 @@ from argospipe.db.repo import (
 )
 from argospipe.llm.anthropic import PROMPT_VERSION, AnthropicProvider, LLMOutputError
 from argospipe.llm.provider import LLMProvider, Usage, cost_usd
+from argospipe.sources.ashby import AshbySource
 from argospipe.sources.base import RawJob, Source
 from argospipe.sources.file_import import FileSource
 from argospipe.sources.greenhouse import GreenhouseSource
+from argospipe.sources.lever import LeverSource
 from argospipe.sources.notion import NotionSource
 
 
@@ -61,10 +64,11 @@ def build_source(source: SourceConfig) -> Source:
     if isinstance(source, AtsSourceConfig):
         if source.ats == "greenhouse":
             return GreenhouseSource(source.slug, source.name)
-        return _UnavailableSource(
-            source.name or f"{source.ats}:{source.slug}",
-            f"{source.ats} sources are not supported yet",
-        )
+        if source.ats == "lever":
+            return LeverSource(source.slug, source.name)
+        if source.ats == "ashby":
+            return AshbySource(source.slug, source.name)
+        assert_never(source.ats)
     if isinstance(source, NotionSourceConfig):
         try:
             return NotionSource(source)
