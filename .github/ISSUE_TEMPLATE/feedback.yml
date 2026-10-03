@@ -1,0 +1,33 @@
+name: Feedback after a week of use
+description: Tell us if the matches were useful, what it cost and what is missing.
+labels: [feedback]
+body:
+  - type: dropdown
+    id: useful
+    attributes:
+      label: Were the recommended offers useful?
+      options:
+        - Most of them
+        - Some of them
+        - Few or none
+    validations:
+      required: true
+  - type: textarea
+    id: misses
+    attributes:
+      label: Wrong matches
+      description: Good offers it discarded, or bad offers it recommended. Say why, without personal data.
+  - type: input
+    id: cost
+    attributes:
+      label: Cost per run (USD)
+      description: From the run report. Add the model you used.
+      placeholder: 0.04 with claude-haiku-4-5
+  - type: textarea
+    id: sources
+    attributes:
+      label: Missing sources
+  - type: textarea
+    id: other
+    attributes:
+      label: Anything else
