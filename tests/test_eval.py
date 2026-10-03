@@ -13,6 +13,7 @@ from argospipe.config import (
     ModelPrice,
     Preferences,
     Profile,
+    save_config,
     save_profile,
 )
 from argospipe.core.models import JobRecord
@@ -130,7 +131,7 @@ def test_cli_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     pairs = tmp_path / "pairs.yaml"
     write_pairs(pairs)
     save_profile(Profile())
-    monkeypatch.setattr(cli, "AnthropicProvider", lambda _m: FakeProvider({"a": 80, "b": 50}))
+    monkeypatch.setattr(cli, "make_provider", lambda config: FakeProvider({"a": 80, "b": 50}))
     result = runner.invoke(
         app, ["eval", "--pairs", str(pairs), "--model", "claude-haiku-4-5", "--json"]
     )
@@ -149,7 +150,15 @@ def test_cli_table(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     pairs = tmp_path / "pairs.yaml"
     write_pairs(pairs)
-    monkeypatch.setattr(cli, "AnthropicProvider", lambda _m: FakeProvider({"a": 80, "b": 50}))
+    save_config(
+        Config(
+            pricing={
+                "x": ModelPrice(input_per_mtok=1.0, output_per_mtok=5.0),
+                "y": ModelPrice(input_per_mtok=1.0, output_per_mtok=5.0),
+            }
+        )
+    )
+    monkeypatch.setattr(cli, "make_provider", lambda config: FakeProvider({"a": 80, "b": 50}))
     result = runner.invoke(app, ["eval", "--pairs", str(pairs), "--model", "x", "--model", "y"])
     assert result.exit_code == 0, result.output
     assert "n/a" in result.output
@@ -159,11 +168,13 @@ def test_cli_uses_key_from_keyring(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     monkeypatch.setenv("ARGOSPIPE_HOME", str(tmp_path))
     monkeypatch.setenv("ANTHROPIC_API_KEY", "")
     monkeypatch.delenv("ANTHROPIC_API_KEY")
-    monkeypatch.setattr(cli, "get_api_key", lambda: "keyring-key")
+    monkeypatch.setattr(cli, "get_api_key", lambda *_: "keyring-key")
     pairs = tmp_path / "pairs.yaml"
     write_pairs(pairs)
-    monkeypatch.setattr(cli, "AnthropicProvider", lambda _m: FakeProvider({"a": 80, "b": 50}))
-    result = runner.invoke(app, ["eval", "--pairs", str(pairs), "--model", "x", "--json"])
+    monkeypatch.setattr(cli, "make_provider", lambda config: FakeProvider({"a": 80, "b": 50}))
+    result = runner.invoke(
+        app, ["eval", "--pairs", str(pairs), "--model", "claude-haiku-4-5", "--json"]
+    )
     assert result.exit_code == 0, result.output
 
 
@@ -171,16 +182,16 @@ def test_cli_missing_key_exits_without_calls(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("ARGOSPIPE_HOME", str(tmp_path))
-    monkeypatch.setattr(cli, "get_api_key", lambda: None)
+    monkeypatch.setattr(cli, "get_api_key", lambda *_: None)
     pairs = tmp_path / "pairs.yaml"
     write_pairs(pairs)
     created: list[str] = []
 
-    def factory(model: str) -> FakeProvider:
-        created.append(model)
+    def factory(config: Config) -> FakeProvider:
+        created.append(config.model)
         return FakeProvider({"a": 80, "b": 50})
 
-    monkeypatch.setattr(cli, "AnthropicProvider", factory)
+    monkeypatch.setattr(cli, "make_provider", factory)
     result = runner.invoke(app, ["eval", "--pairs", str(pairs), "--model", "x"])
     assert result.exit_code == 1
     assert created == []

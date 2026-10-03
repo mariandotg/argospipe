@@ -89,29 +89,73 @@ def test_source_run_and_stale_job_persistence(conn: sqlite3.Connection) -> None:
 def test_match_cache_requires_every_key_part(conn: sqlite3.Connection) -> None:
     upsert_job(conn, _job(), "2026-10-01")
     upsert_job(conn, _job("job-2"), "2026-10-01")
-    key = ("job-1", "hash-1", "profile-1", "prompt-1", "model-1")
+    key = ("job-1", "hash-1", "profile-1", "prompt-1", "model-1", "anthropic")
     save_match(conn, *key, _result(), 100, 20, "2026-10-01")
     save_match(conn, *key, _result(), 200, 40, "2026-10-02")
 
     assert get_cached_match(conn, *key) == _result()
     assert conn.execute("SELECT COUNT(*) FROM matches").fetchone()[0] == 1
-    for index, changed in enumerate(("job-2", "hash-2", "profile-2", "prompt-2", "model-2")):
+    for index, changed in enumerate(
+        ("job-2", "hash-2", "profile-2", "prompt-2", "model-2", "openai")
+    ):
         candidate = list(key)
         candidate[index] = changed
         assert get_cached_match(conn, *candidate) is None
+
+
+def test_match_cache_distinguishes_provider_with_same_model(conn: sqlite3.Connection) -> None:
+    upsert_job(conn, _job(), "2026-10-01")
+    anthropic_key = ("job-1", "hash-1", "profile-1", "prompt-1", "shared-model", "anthropic")
+    openai_key = ("job-1", "hash-1", "profile-1", "prompt-1", "shared-model", "openai")
+    save_match(conn, *anthropic_key, _result(), 1, 1, "2026-10-01")
+    save_match(
+        conn,
+        *openai_key,
+        MatchResult(score=42, seniority_match="below", summary="Other provider"),
+        2,
+        2,
+        "2026-10-01",
+    )
+
+    assert get_cached_match(conn, *anthropic_key) == _result()
+    assert get_cached_match(conn, *openai_key).score == 42
 
 
 def test_open_jobs_without_match_excludes_matched_and_closed(conn: sqlite3.Connection) -> None:
     for fingerprint in ("matched", "new", "closed", "changed"):
         upsert_job(conn, _job(fingerprint), "2026-10-01")
     upsert_job(conn, _job("closed", status="closed"), "2026-10-01")
-    save_match(conn, "matched", "hash-1", "profile", "prompt", "model", _result(), 1, 1, "now")
-    save_match(conn, "changed", "old-hash", "profile", "prompt", "model", _result(), 1, 1, "now")
+    save_match(
+        conn,
+        "matched",
+        "hash-1",
+        "profile",
+        "prompt",
+        "model",
+        "anthropic",
+        _result(),
+        1,
+        1,
+        "now",
+    )
+    save_match(
+        conn,
+        "changed",
+        "old-hash",
+        "profile",
+        "prompt",
+        "model",
+        "anthropic",
+        _result(),
+        1,
+        1,
+        "now",
+    )
 
-    jobs = open_jobs_without_match(conn, "profile", "prompt", "model")
+    jobs = open_jobs_without_match(conn, "profile", "prompt", "model", "anthropic")
     assert [job.fingerprint for job in jobs] == ["changed", "new"]
     assert jobs[0].stack == ["python", "sqlite"]
-    other_jobs = open_jobs_without_match(conn, "other", "prompt", "model")
+    other_jobs = open_jobs_without_match(conn, "other", "prompt", "model", "anthropic")
     assert [job.fingerprint for job in other_jobs] == [
         "changed",
         "matched",

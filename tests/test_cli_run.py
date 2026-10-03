@@ -9,7 +9,7 @@ from typer.testing import CliRunner
 
 from argospipe import config, pipeline
 from argospipe.cli import app
-from argospipe.config import NotionFields, NotionSourceConfig
+from argospipe.config import Config, NotionFields, NotionSourceConfig
 from argospipe.core.models import RunResult
 from argospipe.output.notion import NotionWritebackError, WritebackReport
 from tests.test_pipeline import JOBS, PROFILE, FakeProvider
@@ -52,7 +52,7 @@ def test_run_without_config_suggests_sources_add(home: Path) -> None:
 def test_run_json_with_max_matches_override(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     configure(home)
     provider = FakeProvider()
-    monkeypatch.setattr(pipeline, "AnthropicProvider", lambda model: provider)
+    monkeypatch.setattr(pipeline, "make_provider", lambda config: provider)
 
     result = runner.invoke(app, ["run", "--json", "--max-matches", "1", "--no-open"])
 
@@ -65,7 +65,7 @@ def test_run_json_with_max_matches_override(home: Path, monkeypatch: pytest.Monk
 
 def test_run_prints_summary(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     configure(home)
-    monkeypatch.setattr(pipeline, "AnthropicProvider", lambda model: FakeProvider())
+    monkeypatch.setattr(pipeline, "make_provider", lambda config: FakeProvider())
 
     result = runner.invoke(app, ["run", "--notion-writeback", "--no-open"])
 
@@ -80,10 +80,10 @@ def test_dry_run_needs_no_api_key(home: Path, monkeypatch: pytest.MonkeyPatch) -
     configure(home)
     monkeypatch.delenv("ANTHROPIC_API_KEY")
 
-    def no_provider(model: str) -> None:
+    def no_provider(config: Config) -> None:
         raise AssertionError("dry run must not build a provider")
 
-    monkeypatch.setattr(pipeline, "AnthropicProvider", no_provider)
+    monkeypatch.setattr(pipeline, "make_provider", no_provider)
 
     result = runner.invoke(app, ["run", "--dry-run", "--json"])
 
@@ -95,7 +95,7 @@ def test_dry_run_needs_no_api_key(home: Path, monkeypatch: pytest.MonkeyPatch) -
 
 def test_run_writes_report_and_opens_browser(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     configure(home)
-    monkeypatch.setattr(pipeline, "AnthropicProvider", lambda model: FakeProvider())
+    monkeypatch.setattr(pipeline, "make_provider", lambda config: FakeProvider())
     opened: list[str] = []
     monkeypatch.setattr(webbrowser, "open", lambda url: opened.append(url) or True)
 
@@ -111,7 +111,7 @@ def test_run_writes_report_and_opens_browser(home: Path, monkeypatch: pytest.Mon
 
 def test_run_no_open_skips_browser(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     configure(home)
-    monkeypatch.setattr(pipeline, "AnthropicProvider", lambda model: FakeProvider())
+    monkeypatch.setattr(pipeline, "make_provider", lambda config: FakeProvider())
     monkeypatch.setattr(webbrowser, "open", lambda url: (_ for _ in ()).throw(AssertionError(url)))
 
     result = runner.invoke(app, ["run", "--no-open"])
@@ -122,7 +122,7 @@ def test_run_no_open_skips_browser(home: Path, monkeypatch: pytest.MonkeyPatch) 
 
 def test_run_json_writes_no_report(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     configure(home)
-    monkeypatch.setattr(pipeline, "AnthropicProvider", lambda model: FakeProvider())
+    monkeypatch.setattr(pipeline, "make_provider", lambda config: FakeProvider())
 
     result = runner.invoke(app, ["run", "--json", "--no-open"])
 
@@ -134,7 +134,7 @@ def test_notion_writeback_only_with_flag_and_sources(
     home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     configure(home)
-    monkeypatch.setattr(pipeline, "AnthropicProvider", lambda model: FakeProvider())
+    monkeypatch.setattr(pipeline, "make_provider", lambda config: FakeProvider())
     calls: list[str] = []
 
     async def fake_writeback(
@@ -205,7 +205,7 @@ def test_notion_writeback_warns_without_notion_source(
     home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     configure(home)
-    monkeypatch.setattr(pipeline, "AnthropicProvider", lambda model: FakeProvider())
+    monkeypatch.setattr(pipeline, "make_provider", lambda config: FakeProvider())
 
     result = runner.invoke(app, ["run", "--no-open", "--notion-writeback"])
 
@@ -217,7 +217,7 @@ def test_notion_writeback_page_errors_still_exit_zero(
     home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     configure(home)
-    monkeypatch.setattr(pipeline, "AnthropicProvider", lambda model: FakeProvider())
+    monkeypatch.setattr(pipeline, "make_provider", lambda config: FakeProvider())
     notion = NotionSourceConfig(
         database_id="db-pages",
         fields=NotionFields(
@@ -250,7 +250,7 @@ def test_notion_writeback_missing_token_exits_one(
     home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     configure(home)
-    monkeypatch.setattr(pipeline, "AnthropicProvider", lambda model: FakeProvider())
+    monkeypatch.setattr(pipeline, "make_provider", lambda config: FakeProvider())
     monkeypatch.delenv("NOTION_TOKEN", raising=False)
     notion = NotionSourceConfig(
         database_id="db-token",
@@ -273,7 +273,7 @@ def test_notion_writeback_schema_error_exits_one(
     home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     configure(home)
-    monkeypatch.setattr(pipeline, "AnthropicProvider", lambda model: FakeProvider())
+    monkeypatch.setattr(pipeline, "make_provider", lambda config: FakeProvider())
     notion = NotionSourceConfig(
         database_id="db-bad",
         fields=NotionFields(

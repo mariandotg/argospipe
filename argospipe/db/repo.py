@@ -110,14 +110,15 @@ def get_cached_match(
     profile_version: str,
     prompt_version: str,
     model: str,
+    provider: str,
 ) -> MatchResult | None:
     row = conn.execute(
         """
         SELECT result FROM matches
         WHERE fingerprint = ? AND text_hash = ? AND profile_version = ?
-            AND prompt_version = ? AND model = ?
+            AND prompt_version = ? AND model = ? AND provider = ?
         """,
-        (fingerprint, text_hash, profile_version, prompt_version, model),
+        (fingerprint, text_hash, profile_version, prompt_version, model, provider),
     ).fetchone()
     return MatchResult.model_validate_json(row["result"]) if row is not None else None
 
@@ -129,6 +130,7 @@ def save_match(
     profile_version: str,
     prompt_version: str,
     model: str,
+    provider: str,
     result: MatchResult,
     tokens_in: int,
     tokens_out: int,
@@ -137,10 +139,11 @@ def save_match(
     conn.execute(
         """
         INSERT INTO matches (
-            fingerprint, text_hash, profile_version, prompt_version, model,
+            fingerprint, text_hash, profile_version, prompt_version, model, provider,
             score, result, tokens_in, tokens_out, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT (fingerprint, text_hash, profile_version, prompt_version, model) DO NOTHING
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (fingerprint, text_hash, profile_version, prompt_version, model, provider)
+            DO NOTHING
         """,
         (
             fingerprint,
@@ -148,6 +151,7 @@ def save_match(
             profile_version,
             prompt_version,
             model,
+            provider,
             result.score,
             result.model_dump_json(),
             tokens_in,
@@ -158,7 +162,11 @@ def save_match(
 
 
 def open_jobs_without_match(
-    conn: sqlite3.Connection, profile_version: str, prompt_version: str, model: str
+    conn: sqlite3.Connection,
+    profile_version: str,
+    prompt_version: str,
+    model: str,
+    provider: str,
 ) -> list[JobRecord]:
     rows = conn.execute(
         """
@@ -171,10 +179,11 @@ def open_jobs_without_match(
                     AND matches.profile_version = ?
                     AND matches.prompt_version = ?
                     AND matches.model = ?
+                    AND matches.provider = ?
             )
         ORDER BY jobs.fingerprint
         """,
-        (profile_version, prompt_version, model),
+        (profile_version, prompt_version, model, provider),
     ).fetchall()
     return [
         JobRecord.model_validate({**dict(row), "stack": json.loads(row["stack"])}) for row in rows

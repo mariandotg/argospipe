@@ -8,6 +8,7 @@ from typing import Annotated
 
 import anthropic
 import httpx
+import openai
 import typer
 import yaml
 from pypdf.errors import PdfReadError
@@ -31,11 +32,12 @@ from argospipe.config import (
     save_config,
 )
 from argospipe.core.models import RunResult
-from argospipe.credentials import get_api_key
+from argospipe.credentials import PROVIDER_ENV, get_api_key
 from argospipe.eval import EvalResult, load_pairs, run_eval
 from argospipe.init_wizard import init_command
-from argospipe.llm.anthropic import AnthropicProvider, LLMOutputError
-from argospipe.llm.provider import Usage, cost_usd
+from argospipe.llm.common import LLMOutputError, require_model_pricing
+from argospipe.llm.factory import make_provider
+from argospipe.llm.provider import LLMProvider, Usage, cost_usd
 from argospipe.output.notion import NotionWritebackError, writeback
 from argospipe.profile_import import import_profile
 from argospipe.report.render import render
@@ -59,17 +61,17 @@ def profile_import(
     if out_path.exists() and not force:
         typer.echo(f"Profile already exists: {out_path}. Use --force to overwrite it.", err=True)
         raise typer.Exit(1)
-    if not get_api_key():
-        typer.echo(
-            "An Anthropic API key is required to import a profile. "
-            "Set ANTHROPIC_API_KEY or run `argospipe init`.",
-            err=True,
-        )
-        raise typer.Exit(1)
-
     try:
         config = load_config() if config_path().exists() else Config()
+        if not get_api_key(config.provider):
+            typer.echo(
+                f"An API key for {config.provider} is required to import a profile. "
+                f"Set {PROVIDER_ENV[config.provider]}, run `argospipe init`.",
+                err=True,
+            )
+            raise typer.Exit(1)
         selected_model = model or config.model
+        provider_config = config.model_copy(update={"model": selected_model})
         price = config.pricing.get(selected_model)
         usage: Usage | None = None
 
@@ -78,9 +80,16 @@ def profile_import(
             usage = value
 
         profile = asyncio.run(
-            import_profile(cv, AnthropicProvider(selected_model), out_path, force, record_usage)
+            import_profile(cv, make_provider(provider_config), out_path, force, record_usage)
         )
-    except (OSError, ValueError, PdfReadError, anthropic.APIError, LLMOutputError) as exc:
+    except (
+        OSError,
+        ValueError,
+        PdfReadError,
+        anthropic.APIError,
+        openai.APIError,
+        LLMOutputError,
+    ) as exc:
         typer.echo(f"Profile import failed: {exc}", err=True)
         raise typer.Exit(1) from exc
 
@@ -124,21 +133,26 @@ def execute_run(
             err=True,
         )
         raise typer.Exit(1)
-    if not dry_run and not get_api_key():
-        typer.echo(
-            "An Anthropic API key is required to match offers. "
-            "Set ANTHROPIC_API_KEY, run `argospipe init`, or use --dry-run.",
-            err=True,
-        )
-        raise typer.Exit(1)
-
     try:
         config = load_config()
         profile = load_profile()
+        if not dry_run and not get_api_key(config.provider):
+            typer.echo(
+                f"An API key for {config.provider} is required to match offers. "
+                f"Set {PROVIDER_ENV[config.provider]}, run `argospipe init`, or use --dry-run.",
+                err=True,
+            )
+            raise typer.Exit(1)
         result = asyncio.run(
             pipeline.run(config, profile, dry_run=dry_run, max_matches=max_matches)
         )
-    except (OSError, ValueError, sqlite3.Error, anthropic.AnthropicError) as exc:
+    except (
+        OSError,
+        ValueError,
+        sqlite3.Error,
+        anthropic.AnthropicError,
+        openai.OpenAIError,
+    ) as exc:
         typer.echo(f"Run failed: {exc}", err=True)
         raise typer.Exit(1) from exc
 
@@ -327,25 +341,36 @@ def eval_command(
             err=True,
         )
         raise typer.Exit(1)
-    if not get_api_key():
-        typer.echo("Set ANTHROPIC_API_KEY or run `argospipe init` to run the eval.", err=True)
+    eval_config = load_config() if config_path().exists() else Config()
+    if not get_api_key(eval_config.provider):
+        typer.echo(
+            f"No API key for {eval_config.provider}. "
+            f"Set {PROVIDER_ENV[eval_config.provider]} or run `argospipe init`.",
+            err=True,
+        )
         raise typer.Exit(1)
 
     try:
         loaded = load_pairs(pairs)
         config = load_config() if config_path().exists() else Config()
         default_profile = load_profile() if profile_path().exists() else None
+        for model_name in model:
+            require_model_pricing(model_name, config.pricing)
     except (OSError, ValueError, yaml.YAMLError) as exc:
         typer.echo(f"Eval failed: {exc}", err=True)
         raise typer.Exit(1) from exc
 
     if threshold is None:
         threshold = default_profile.preferences.threshold if default_profile else 70
+
+    def eval_provider_factory(model_name: str) -> LLMProvider:
+        return make_provider(config.model_copy(update={"model": model_name}))
+
     result = asyncio.run(
         run_eval(
             loaded,
             model,
-            AnthropicProvider,
+            eval_provider_factory,
             config,
             default_profile,
             threshold,

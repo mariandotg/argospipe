@@ -23,7 +23,7 @@ from argospipe.core.extract import extract
 from argospipe.core.fingerprint import fingerprint
 from argospipe.core.models import JobRecord, RunResult
 from argospipe.db import connect, migrate
-from argospipe.llm.anthropic import LLMOutputError
+from argospipe.llm.common import LLMOutputError
 from argospipe.llm.provider import Usage
 from argospipe.llm.schemas import MatchResult, ProfileExtraction
 from argospipe.sources.ashby import AshbySource
