@@ -149,13 +149,13 @@ def test_run_matches_discards_and_reports_stats(conn: sqlite3.Connection) -> Non
     assert any("Evil Corp is excluded" in reason for reason in reasons)
     assert any("below minimum senior" in reason for reason in reasons)
     assert (result.tokens_in, result.tokens_out) == (1000, 100)
-    assert result.cost_usd == pytest.approx(0.0015)
+    assert result.cost_usd == pytest.approx(0.00015)
 
     run_jobs = conn.execute("SELECT stage, COUNT(*) FROM run_jobs GROUP BY stage").fetchall()
     assert dict(map(tuple, run_jobs)) == {"matched": 1, "prefiltered_out": 2, "ranked_out": 1}
     row = conn.execute("SELECT status, stats, cost_usd FROM runs").fetchone()
     assert row["status"] == "finished"
-    assert row["cost_usd"] == pytest.approx(0.0015)
+    assert row["cost_usd"] == pytest.approx(0.00015)
     stats = json.loads(row["stats"])
     assert stats["matched"] == 1
     assert stats["discarded"] == {"prefiltered_out": 2, "ranked_out": 1}
@@ -179,7 +179,7 @@ def test_second_run_makes_no_provider_calls(conn: sqlite3.Connection) -> None:
 def test_cost_cap_stops_matching(conn: sqlite3.Connection) -> None:
     jobs = [raw(f"Senior Backend Engineer {n}", f"Company {n}") for n in range(4)]
     provider = FakeProvider()
-    config = Config(max_cost_per_run_usd=0.002, match_concurrency=1)
+    config = Config(max_cost_per_run_usd=0.00025, match_concurrency=1)
 
     result = run(conn, provider, [FakeSource(jobs)], config)
 
@@ -242,7 +242,7 @@ def test_failed_match_counts_cost_and_run_continues(conn: sqlite3.Connection) ->
     assert len(provider.calls) == 2
     assert result.failed_count == 1
     assert [match.job.company for match in result.matches] == ["Globex"]
-    assert result.cost_usd == pytest.approx(0.003)
+    assert result.cost_usd == pytest.approx(0.0003)
 
 
 class ApiErrorProvider(FakeProvider):

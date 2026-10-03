@@ -86,7 +86,10 @@ def main(
 def profile_import(
     cv: Annotated[Path, typer.Argument(help="CV file (PDF or text).")],
     force: Annotated[bool, typer.Option("--force", help="Overwrite profile.yaml.")] = False,
-    model: Annotated[str | None, typer.Option("--model", help="Anthropic model.")] = None,
+    model: Annotated[
+        str | None,
+        typer.Option("--model", help="Model to use (provider from config)."),
+    ] = None,
 ) -> None:
     """Extract your profile from a CV into profile.yaml."""
     out_path = profile_path()
@@ -380,7 +383,7 @@ def eval_command(
     ctx: typer.Context,
     model: Annotated[
         list[str] | None,
-        typer.Option("--model", help="Anthropic model to evaluate. Repeatable."),
+        typer.Option("--model", help="Model to evaluate (provider from config). Repeatable."),
     ] = None,
     pairs: Annotated[Path, typer.Option("--pairs", help="Pairs file.")] = Path("eval/pairs.yaml"),
     json_output: Annotated[bool, typer.Option("--json", help="Print the result as JSON.")] = False,

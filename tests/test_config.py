@@ -64,3 +64,41 @@ def test_profile_version_changes_on_edit(tmp_path: Path) -> None:
 def test_data_dir_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(cfg.HOME_ENV, str(tmp_path))
     assert cfg.db_path() == tmp_path / "argospipe.db"
+
+
+def test_fresh_config_defaults_to_openai_gpt_6_luna() -> None:
+    config = cfg.Config()
+    assert config.provider == "openai"
+    assert config.model == "gpt-6-luna"
+    price = config.pricing["gpt-6-luna"]
+    assert price.input_per_mtok == 0.10
+    assert price.output_per_mtok == 0.50
+
+
+def test_legacy_config_without_provider_infers_anthropic_from_claude_model(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "config.yaml"
+    path.write_text("model: claude-haiku-4-5\n", encoding="utf-8")
+    config = cfg.load_config(path)
+    assert config.provider == "anthropic"
+    assert config.model == "claude-haiku-4-5"
+
+
+def test_legacy_config_without_provider_or_model_defaults_openai(tmp_path: Path) -> None:
+    path = tmp_path / "config.yaml"
+    path.write_text("max_matches_per_run: 5\n", encoding="utf-8")
+    config = cfg.load_config(path)
+    assert config.provider == "openai"
+    assert config.model == "gpt-6-luna"
+
+
+def test_explicit_provider_not_overridden_by_legacy_inference(tmp_path: Path) -> None:
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        "provider: anthropic\nmodel: gpt-6-luna\n",
+        encoding="utf-8",
+    )
+    config = cfg.load_config(path)
+    assert config.provider == "anthropic"
+    assert config.model == "gpt-6-luna"

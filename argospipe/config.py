@@ -1,11 +1,11 @@
 import hashlib
 import os
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 import yaml
 from platformdirs import user_data_dir
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 APP_NAME = "argospipe"
 HOME_ENV = "ARGOSPIPE_HOME"
@@ -107,17 +107,28 @@ class ModelPrice(BaseModel):
 
 
 class Config(BaseModel):
-    provider: Literal["anthropic", "openai"] = "anthropic"
-    model: str = "claude-haiku-4-5"
+    provider: Literal["anthropic", "openai"] = "openai"
+    model: str = "gpt-6-luna"
     max_matches_per_run: int = 15
     max_cost_per_run_usd: float = 1.0
     match_concurrency: int = 4
     close_after_days: int = 14
     source_timeout_s: float = Field(default=120.0, gt=0)
     pricing: dict[str, ModelPrice] = {
+        "gpt-6-luna": ModelPrice(input_per_mtok=0.10, output_per_mtok=0.50),
         "claude-haiku-4-5": ModelPrice(input_per_mtok=1.0, output_per_mtok=5.0),
     }
     sources: list[SourceConfig] = []
+
+    @model_validator(mode="before")
+    @classmethod
+    def infer_provider_from_legacy_model(cls, data: Any) -> Any:
+        if not isinstance(data, dict) or "provider" in data:
+            return data
+        model = data.get("model")
+        if isinstance(model, str) and model.startswith("claude-"):
+            return {**data, "provider": "anthropic"}
+        return data
 
 
 def _load_yaml[M: BaseModel](path: Path, model: type[M]) -> M:

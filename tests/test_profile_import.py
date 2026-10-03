@@ -100,7 +100,7 @@ def test_import_refuses_overwrite_before_provider_call(tmp_path: Path) -> None:
 
 def test_cli_import_and_force(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ARGOSPIPE_HOME", str(tmp_path / "data"))
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "secret-test-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "secret-test-key")
     save_config(
         Config(
             model="configured-model",
@@ -144,7 +144,7 @@ def test_cli_missing_key_exits_without_provider_call(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("ARGOSPIPE_HOME", str(tmp_path / "data"))
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setattr(cli, "get_api_key", lambda *_: None)
     cv = _text_cv(tmp_path)
     provider = FakeProvider()
@@ -160,7 +160,7 @@ def test_cli_missing_key_exits_without_provider_call(
 
 def test_cli_corrupt_pdf_exits_cleanly(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ARGOSPIPE_HOME", str(tmp_path / "home"))
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     cv = tmp_path / "cv.pdf"
     cv.write_bytes(b"%PDF-1.7 not really a pdf")
 

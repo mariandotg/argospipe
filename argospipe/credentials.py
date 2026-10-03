@@ -22,7 +22,7 @@ _PROVIDER_KEYRING: dict[ProviderName, str] = {
 }
 
 
-def get_api_key(provider: ProviderName = "anthropic") -> str | None:
+def get_api_key(provider: ProviderName = "openai") -> str | None:
     env = os.environ.get(PROVIDER_ENV[provider])
     if env:
         return env
@@ -32,7 +32,7 @@ def get_api_key(provider: ProviderName = "anthropic") -> str | None:
         return None
 
 
-def save_api_key(key: str, provider: ProviderName = "anthropic") -> None:
+def save_api_key(key: str, provider: ProviderName = "openai") -> None:
     keyring.set_password(SERVICE_NAME, _PROVIDER_KEYRING[provider], key)
 
 
